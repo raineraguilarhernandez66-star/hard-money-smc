@@ -102,7 +102,8 @@
     border-radius:5px;cursor:pointer;color:#fff;padding:2px;display:flex;}
   .thumb-add{width:90px;height:68px;border-radius:10px;border:1px dashed var(--border);background:transparent;
     display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:var(--textDim);cursor:pointer;}
-</style>
+</style> 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 <div id="app"></div>
@@ -1729,5 +1730,14 @@ document.addEventListener('click', function(e){
 render();
 migrateLegacyImages().then(function(){ render(); }).catch(function(){});
 </script>
+  <script>
+  const SUPABASE_URL =https://bjyuttqnqoafkcyqkzsy.supabase.co
+  const SUPABASE_PUBLISHABLE_KEY =sb_publishable_QaJGnf_JG6EkJPZpgqi0xA_Re9IAXep
+
+  const supabaseClient = window.supabase.createClient(
+    SUPABASE_URL,
+    SUPABASE_PUBLISHABLE_KEY
+  );
+  </script>
 </body>
 </html>
