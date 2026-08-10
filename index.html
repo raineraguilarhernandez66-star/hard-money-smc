@@ -1977,55 +1977,6 @@ syncEnqueue('tax_settings', 'upsert', { account_id: accId, rate: numOrNull(r) })
 };
 
 var _saveTaxPayments = saveTaxPayments;
-saveTaxPayments = function(accId, p){
-saveTaxPayments(accId, p);
-syncArrayDiff('tax_payments', p, 'id', function(t){
-return { id: t.id, account_id: accId, fecha: t.fecha, cantidad: numOrNull(t.cantidad), comentario: t.comentario };
-}, 'hm_sync_snap_taxpay' + accId);
-};
-
-var _saveStudy = saveStudy;
-saveStudy = function(study){
-_saveStudy(study);
-syncStudy(study);
-};
-
-var _deleteStudyStorage = deleteStudyStorage;
-deleteStudyStorage = function(id){
-_deleteStudyStorage(id);
-syncEnqueue('studies', 'delete', { id: id });
-};
-
-var _saveChecklistTemplate = saveChecklistTemplate;
-saveChecklistTemplate = function(t){
-_saveChecklistTemplate(t);
-syncEnqueue('checklist_templates', 'upsert', { id: 'default', questions: t || [] });
-};
-
-/* ---------- recuperación completa (dispositivo nuevo / perdiste el teléfono) ---------- /
-function syncPullAll(){
-return Promise.all([
-supabaseClient.from('accounts').select(''),
-supabaseClient.from('operations').select(''),
-supabaseClient.from('operation_images').select(''),
-supabaseClient.from('goals').select(''),
-supabaseClient.from('goal_history').select(''),
-supabaseClient.from('tax_settings').select(''),
-supabaseClient.from('tax_payments').select(''),
-supabaseClient.from('studies').select(''),
-supabaseClient.from('study_ranges').select(''),
-supabaseClient.from('study_images').select(''),
-supabaseClient.from('checklist_templates').select(''),
-supabaseClient.from('movements').select('*')
-]).then(function(results){
-var accounts = results[0].data || [];
-var operations = results[1].data || [];
-var opImages = results[2].data || [];
-var goals = results[3].data || [];
-var goalHist = results[4].data || [];
-var taxSettings = results[5].data || [];
-var taxPayments = results[6].data || [];
-var studies = results[7].data || [];
 
   </script>
 </body>
