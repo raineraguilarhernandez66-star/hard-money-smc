@@ -344,6 +344,36 @@ function loadChecklistTemplate(){
 }
 function saveChecklistTemplate(t){ lsSet('hm_checklist_template', t); }
 
+var RULE_CATEGORIES = ['General','Pro-tendencia','Contra-tendencia','Riesgo','Gestión','Stop Loss','Take Profit','Rangos','Psicología'];
+function defaultRules(){
+  function r(texto, categoria, noNegociable){
+    return { id: uid('rule'), texto: texto, categoria: categoria, noNegociable: !!noNegociable, activa: true, createdAt: Date.now() };
+  }
+  return [
+    r('Arriesgar 0.25% por operación.', 'Contra-tendencia'),
+    r('Cuando la operación llegue a R:R 1:1, mover el SL a BE.', 'Contra-tendencia'),
+    r('Cuando el precio llegue a +2R, continuar moviendo el SL para asegurar ganancias conforme el precio siga avanzando.', 'Contra-tendencia'),
+    r('Arriesgar 0.50% por operación.', 'Pro-tendencia'),
+    r('Cuando la operación llegue a R:R 1:3, mover el SL a BE.', 'Pro-tendencia'),
+    r('Cuando el precio llegue a +3R y la operación ya esté en BE, continuar moviendo el SL para asegurar ganancias conforme el precio siga avanzando.', 'Pro-tendencia'),
+    r('El Stop Loss debe respetarse según el plan de gestión de la operación y no debe modificarse arbitrariamente por miedo, emoción o improvisación.', 'Stop Loss'),
+    r('El Stop Loss debe tener como mínimo 15 pips para darle espacio suficiente a la operación.', 'Stop Loss'),
+    r('El Take Profit debe llegar hasta el 50% de Fibonacci.', 'Take Profit', true),
+    r('Objetivos pro-tendencia: primer objetivo BOS de 15M; segundo objetivo de largo plazo, BOS de 4H.', 'Take Profit'),
+    r('Máximo 3 operaciones por rango.', 'Rangos'),
+    r('Cuando el precio llegue a una zona importante (por ejemplo descuento u oferta de 1D), no operar hasta que la dirección del precio esté totalmente definida.', 'Rangos'),
+    r('Cuando tenga 3 Stop Loss en una semana, paro de operar hasta la siguiente semana.', 'Gestión')
+  ];
+}
+function loadRules(){
+  var r = lsGet('hm_rules', null);
+  if (r && r.length) return r;
+  var def = defaultRules();
+  lsSet('hm_rules', def);
+  return def;
+}
+function saveRules(rules){ lsSet('hm_rules', rules); }
+
 /* ================= DATA ================= */
 var ASSETS = {
   'Forex': ['EUR/USD','GBP/USD','USD/JPY','USD/CAD','AUD/USD'],
@@ -382,6 +412,8 @@ var state = {
   movements: [], goal: null, goalHistory: [],
   taxRate: 15, taxPayments: [],
   checklistTemplate: loadChecklistTemplate(),
+  rules: loadRules(),
+  rulesFilterCat: 'Todas',
   studiesIndex: loadStudiesIndex(),
   currentStudy: null,
   studyTF: 'h4', studyRangeId: null,
@@ -421,6 +453,7 @@ function emptyOperation(cuenta){
     direccion: 'Compra', lotaje: '', riesgo: '', precioEntrada: '', stopLoss: '', takeProfit: '', rr: '',
     resultado: 'Ganada', beneficio: '',
     tipoEntrada: 'Riesgo', checklist: {}, observaciones: '',
+    tipoOperacion: '',
     imagenesAntes: [], imagenesDurante: [], imagenesResultado: [], noticias: [], createdAt: Date.now()
   };
 }
@@ -502,6 +535,8 @@ var ICONS = {
   upload:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>',
   info:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
   settings2:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
+  listcheck:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11"/><path d="M9 12h11"/><path d="M9 18h11"/><path d="M4 6l1 1 2-2"/><path d="M4 12l1 1 2-2"/><path d="M4 18l1 1 2-2"/></svg>',
+  lock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
 };
 function icon(name){
   var svg = ICONS[name] || '';
@@ -523,6 +558,7 @@ function render(){
   else if (state.view === 'biblioteca-list') html = renderBibliotecaList();
   else if (state.view === 'biblioteca-study') html = renderBibliotecaStudy();
   else if (state.view === 'config') html = renderConfig();
+  else if (state.view === 'reglas') html = renderReglas();
 
   var deep = (state.view === 'diario-form' || state.view === 'biblioteca-study');
   app.style.paddingBottom = deep ? '10px' : '96px';
@@ -539,6 +575,7 @@ function render(){
   else if (state.view === 'biblioteca-list') bindBibliotecaListEvents();
   else if (state.view === 'biblioteca-study') bindBibliotecaStudyEvents();
   else if (state.view === 'config') bindConfigEvents();
+  else if (state.view === 'reglas') bindReglasEvents();
 }
 
 function goTo(view){ state.view = view; render(); }
@@ -741,6 +778,7 @@ function renderHome(){
   +     iconTile('receipt','Impuestos','ar-impuestos')
   +     iconTile('wallet','Diario','ar-diario')
   +     iconTile('landmark','Cuentas','ar-cuentas')
+  +     iconTile('listcheck','Mis reglas','ar-reglas')
   +   '</div>'
   + '</div>';
 }
@@ -799,7 +837,7 @@ function bindHomeEvents(){
   var hist = document.getElementById('mv-history-btn'); if (hist) hist.addEventListener('click', openMovementsHistoryModal);
   var cuentasTile = document.getElementById('ar-cuentas');
   if (cuentasTile) cuentasTile.addEventListener('click', openAccountSwitcherModal);
-  var m = { 'ar-calendario':'calendario','ar-stats':'estadisticas','ar-biblioteca':'biblioteca-list','ar-impuestos':'impuestos','ar-diario':'diario-list' };
+  var m = { 'ar-calendario':'calendario','ar-stats':'estadisticas','ar-biblioteca':'biblioteca-list','ar-impuestos':'impuestos','ar-diario':'diario-list','ar-reglas':'reglas' };
   Object.keys(m).forEach(function(id){
     var el = document.getElementById(id);
     if (el) el.addEventListener('click', function(){ goTo(m[id]); });
@@ -870,6 +908,7 @@ function renderMas(){
   +   masRow('layers','Biblioteca de Análisis SMC','Estudios de rango 4H → 1H → 15M','mas-biblioteca')
   +   masRow('receipt','Impuestos','Estimación y pagos','mas-impuestos')
   +   masRow('landmark','Cuentas','Cambiar o crear cuentas','mas-cuentas')
+  +   masRow('listcheck','Mis reglas','Tus reglas de trading, editables','mas-reglas')
   +   masRow('settings2','Configuración','Copia de seguridad: exportar / restaurar','mas-config')
   + '</div>';
 }
@@ -884,7 +923,101 @@ function bindMasEvents(){
   var b = document.getElementById('mas-biblioteca'); if (b) b.addEventListener('click', function(){ goTo('biblioteca-list'); });
   var i = document.getElementById('mas-impuestos'); if (i) i.addEventListener('click', function(){ goTo('impuestos'); });
   var c = document.getElementById('mas-cuentas'); if (c) c.addEventListener('click', openAccountSwitcherModal);
+  var rg = document.getElementById('mas-reglas'); if (rg) rg.addEventListener('click', function(){ goTo('reglas'); });
   var cfg = document.getElementById('mas-config'); if (cfg) cfg.addEventListener('click', function(){ goTo('config'); });
+}
+
+/* ================= MIS REGLAS ================= */
+function ruleRow(rule){
+  return '<div class="op-row rule-row" data-id="' + rule.id + '" style="opacity:' + (rule.activa?1:0.5) + '">'
+    + '<div style="display:flex;align-items:flex-start;gap:10px">'
+    +   '<div style="flex:1">'
+    +     '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px">'
+    +       '<span class="pill pill-gold">' + esc(rule.categoria) + '</span>'
+    +       (rule.noNegociable ? '<span class="pill pill-red" style="display:inline-flex;align-items:center;gap:4px">' + icon('lock') + ' No negociable</span>' : '')
+    +       (!rule.activa ? '<span class="pill pill-default">Inactiva</span>' : '')
+    +     '</div>'
+    +     '<div style="font-size:13.5px;line-height:1.5">' + esc(rule.texto) + '</div>'
+    +   '</div>'
+    +   '<button class="iconbtn rule-delete-btn" data-id="' + rule.id + '" style="color:var(--red);flex-shrink:0">' + icon('trash') + '</button>'
+    + '</div>'
+    + '</div>';
+}
+function renderReglas(){
+  var cats = ['Todas'].concat(RULE_CATEGORIES);
+  var chips = cats.map(function(c){
+    return '<button class="chip rules-chip ' + (state.rulesFilterCat===c?'active':'') + '" data-cat="' + esc(c) + '">' + esc(c) + '</button>';
+  }).join('');
+  var rules = state.rulesFilterCat === 'Todas' ? state.rules : state.rules.filter(function(r){ return r.categoria === state.rulesFilterCat; });
+  var listHtml = rules.length === 0
+    ? '<div class="empty">Sin reglas en esta categoría todavía.</div>'
+    : rules.map(ruleRow).join('');
+  return '<div class="topbar"><button class="iconbtn" id="back-btn">' + icon('back') + '</button><h2 style="font-size:17px;font-weight:700;flex:1">Mis reglas</h2><button class="iconbtn" id="new-rule-btn" style="color:var(--gold);background:var(--goldSoft)">' + icon('plus') + '</button></div>'
+  + '<div style="padding:16px 18px 0"><p style="color:var(--textDim);font-size:12.5px;margin:0 0 4px">Tus reglas de trading. Tócala para editarla.</p></div>'
+  + '<div style="display:flex;gap:8px;padding:14px 18px 0;overflow-x:auto">' + chips + '</div>'
+  + '<div style="padding:16px 18px 0">' + listHtml + '</div>';
+}
+function bindReglasEvents(){
+  var back = document.getElementById('back-btn'); if (back) back.addEventListener('click', function(){ goTo('mas'); });
+  var addBtn = document.getElementById('new-rule-btn'); if (addBtn) addBtn.addEventListener('click', function(){ openRuleModal(null); });
+  document.querySelectorAll('.rules-chip').forEach(function(c){
+    c.addEventListener('click', function(){ state.rulesFilterCat = c.getAttribute('data-cat'); render(); });
+  });
+  document.querySelectorAll('.rule-delete-btn').forEach(function(b){
+    b.addEventListener('click', function(e){
+      e.stopPropagation();
+      if (confirm('¿Eliminar esta regla?')) {
+        var id = b.getAttribute('data-id');
+        state.rules = state.rules.filter(function(r){ return r.id !== id; });
+        saveRules(state.rules);
+        render();
+      }
+    });
+  });
+  document.querySelectorAll('.rule-row').forEach(function(row){
+    row.addEventListener('click', function(){
+      var rule = state.rules.find(function(r){ return r.id === row.getAttribute('data-id'); });
+      if (rule) openRuleModal(rule);
+    });
+  });
+}
+function openRuleModal(rule){
+  var isNew = !rule;
+  var draft = rule ? { texto: rule.texto, categoria: rule.categoria, noNegociable: rule.noNegociable, activa: rule.activa } : { texto: '', categoria: 'General', noNegociable: false, activa: true };
+  var catOptions = RULE_CATEGORIES.map(function(c){ return '<option value="' + esc(c) + '"' + (c === draft.categoria ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('');
+  openModal(''
+    + '<h2 style="font-size:18px;font-weight:700;margin-bottom:4px">' + (isNew ? 'Nueva regla' : 'Editar regla') + '</h2>'
+    + '<p style="color:var(--textDim);font-size:13px;margin-bottom:16px">Tus propias reglas de trading, editables cuando quieras.</p>'
+    + '<div class="field"><label class="label">Regla</label><textarea id="rule-texto" rows="4" placeholder="Escribe tu regla…" style="min-height:100px">' + esc(draft.texto) + '</textarea></div>'
+    + '<div class="field"><label class="label">Categoría</label><select id="rule-categoria">' + catOptions + '</select></div>'
+    + '<div class="field"><label class="label">No negociable</label><div class="seg" id="rule-nonego"><button data-val="true" class="' + (draft.noNegociable ? 'active' : '') + '">Sí</button><button data-val="false" class="' + (!draft.noNegociable ? 'active' : '') + '">No</button></div></div>'
+    + '<div class="field"><label class="label">Estado</label><div class="seg" id="rule-activa"><button data-val="true" class="' + (draft.activa ? 'active' : '') + '">Activa</button><button data-val="false" class="' + (!draft.activa ? 'active' : '') + '">Inactiva</button></div></div>'
+    + '<div style="display:flex;gap:10px;margin-top:10px">'
+    +   '<button class="btn btn-ghost" style="flex:1;justify-content:center" onclick="closeModal()">Cancelar</button>'
+    +   '<button class="btn btn-primary" style="flex:1" id="rule-save-btn">' + icon('check') + ' Guardar</button>'
+    + '</div>'
+  );
+  autoExpandTextarea(document.getElementById('rule-texto'));
+  document.getElementById('rule-nonego').querySelectorAll('button').forEach(function(b){
+    b.addEventListener('click', function(){ draft.noNegociable = b.getAttribute('data-val') === 'true'; document.getElementById('rule-nonego').querySelectorAll('button').forEach(function(x){x.classList.remove('active');}); b.classList.add('active'); });
+  });
+  document.getElementById('rule-activa').querySelectorAll('button').forEach(function(b){
+    b.addEventListener('click', function(){ draft.activa = b.getAttribute('data-val') === 'true'; document.getElementById('rule-activa').querySelectorAll('button').forEach(function(x){x.classList.remove('active');}); b.classList.add('active'); });
+  });
+  document.getElementById('rule-save-btn').addEventListener('click', function(){
+    var texto = document.getElementById('rule-texto').value.trim();
+    if (!texto) return;
+    var categoria = document.getElementById('rule-categoria').value;
+    if (isNew) {
+      state.rules.unshift({ id: uid('rule'), texto: texto, categoria: categoria, noNegociable: draft.noNegociable, activa: draft.activa, createdAt: Date.now() });
+    } else {
+      state.rules = state.rules.map(function(r){
+        return r.id === rule.id ? { id: r.id, texto: texto, categoria: categoria, noNegociable: draft.noNegociable, activa: draft.activa, createdAt: r.createdAt } : r;
+      });
+    }
+    saveRules(state.rules);
+    closeModal(); render();
+  });
 }
 
 /* ================= CONFIGURACIÓN — copia de seguridad ================= */
@@ -1122,6 +1255,7 @@ function renderDiarioForm(){
   +     '<div class="field"><label class="label">Categoría de activo</label><select id="f-categoria">'+categoriaOptions+'</select></div>'
   +     '<div class="field"><label class="label">Activo</label>'+activoField+'</div>'
   +     '<div class="field"><label class="label">Dirección</label><div class="seg" id="f-direccion"><button data-val="Compra" class="'+(op.direccion==='Compra'?'active':'')+'">Compra</button><button data-val="Venta" class="'+(op.direccion==='Venta'?'active':'')+'">Venta</button></div></div>'
+  +     '<div class="field"><label class="label">Tipo de operación</label><div class="seg" id="f-tipoOperacion"><button data-val="Pro-tendencia" class="'+((op.tipoOperacion||'')==='Pro-tendencia'?'active':'')+'">Pro-tendencia</button><button data-val="Contra-tendencia" class="'+((op.tipoOperacion||'')==='Contra-tendencia'?'active':'')+'">Contra-tendencia</button><button data-val="" class="'+((op.tipoOperacion||'')===''?'active':'')+'" style="flex:0 0 auto;padding:0 12px">—</button></div></div>'
   +     '<div class="row2 field"><div><label class="label">Lotaje</label><input inputmode="decimal" id="f-lotaje" value="'+esc(op.lotaje)+'" placeholder="0.10"></div><div><label class="label">Riesgo %</label><input inputmode="decimal" id="f-riesgo" value="'+esc(op.riesgo)+'" placeholder="1"></div></div>'
   +     '<div class="row2 field"><div><label class="label">Entrada</label><input inputmode="decimal" id="f-entrada" value="'+esc(op.precioEntrada)+'"></div><div><label class="label">Stop Loss</label><input inputmode="decimal" id="f-sl" value="'+esc(op.stopLoss)+'"></div></div>'
   +     '<div class="row2 field"><div><label class="label">Take Profit</label><input inputmode="decimal" id="f-tp" value="'+esc(op.takeProfit)+'"></div><div><label class="label">RR</label><input inputmode="decimal" id="f-rr" value="'+esc(op.rr)+'" style="color:var(--gold);font-weight:700"></div></div>'
@@ -1270,6 +1404,7 @@ function bindDiarioFormEvents(){
   var catSel = document.getElementById('f-categoria'); if (catSel) catSel.addEventListener('change', function(){ op.categoria=catSel.value; if(op.categoria!=='Otro') op.activo=ASSETS[op.categoria][0]; render(); });
   var activoSel = document.getElementById('f-activo'); if (activoSel) activoSel.addEventListener('change', function(){ op.activo=activoSel.value; render(); });
   var dirSeg = document.getElementById('f-direccion'); if (dirSeg) dirSeg.querySelectorAll('button').forEach(function(b){b.addEventListener('click',function(){op.direccion=b.getAttribute('data-val');render();});});
+  var tipoOpSeg = document.getElementById('f-tipoOperacion'); if (tipoOpSeg) tipoOpSeg.querySelectorAll('button').forEach(function(b){b.addEventListener('click',function(){op.tipoOperacion=b.getAttribute('data-val');render();});});
   var resSeg = document.getElementById('f-resultado'); if (resSeg) resSeg.querySelectorAll('button').forEach(function(b){b.addEventListener('click',function(){op.resultado=b.getAttribute('data-val');render();});});
   var tipoSeg = document.getElementById('f-tipoEntrada'); if (tipoSeg) tipoSeg.querySelectorAll('button').forEach(function(b){b.addEventListener('click',function(){op.tipoEntrada=b.getAttribute('data-val');op.checklist={};render();});});
   document.querySelectorAll('.chk-btn').forEach(function(b){b.addEventListener('click',function(){op.checklist[b.getAttribute('data-q')]=b.getAttribute('data-val')==='true';render();});});
@@ -1441,6 +1576,16 @@ function renderEstadisticas(){
   }).filter(function(r){return r.count>0;});
   var maxCuentaCount = Math.max(1, Math.max.apply(null, porCuenta.map(function(r){return r.count;})||[1]));
 
+  var porTipoOperacion = ['Pro-tendencia','Contra-tendencia'].map(function(tipo){
+    var ops = scoped.filter(function(o){return o.tipoOperacion===tipo;});
+    var wins = ops.filter(function(o){return o.resultado==='Ganada';}).length;
+    var losses = ops.filter(function(o){return o.resultado==='Perdida';}).length;
+    var profit = ops.reduce(function(s,o){return s+(parseFloat(o.beneficio)||0);},0);
+    var rrVals = ops.map(function(o){return parseFloat(o.rr);}).filter(function(v){return !isNaN(v);});
+    var rrProm = rrVals.length ? rrVals.reduce(function(a,v){return a+v;},0)/rrVals.length : 0;
+    return { tipo:tipo, count:ops.length, wins:wins, losses:losses, winRate: ops.length?(wins/ops.length*100):0, profit:profit, rrProm:rrProm };
+  }).filter(function(r){return r.count>0;});
+
   var chips = ['Todas'].concat(accNames).map(function(a){
     return '<button class="chip stats-chip ' + (state.statsScope===a?'active':'') + '" data-cuenta="'+esc(a)+'">'+esc(a)+'</button>';
   }).join('');
@@ -1466,6 +1611,16 @@ function renderEstadisticas(){
   + '<div style="padding:22px 18px 0"><h3 style="font-size:15px;font-weight:700;margin-bottom:12px">Operaciones por mes</h3>'
   +   '<div class="card"><div style="display:flex;align-items:flex-end;gap:8px;height:130px;padding:0 2px">'+barsHtml+'</div></div>'
   + '</div>'
+  + (porTipoOperacion.length ? '<div style="padding:22px 18px 0"><h3 style="font-size:15px;font-weight:700;margin-bottom:12px">Pro-tendencia vs. Contra-tendencia</h3><div class="stat-grid">'
+  +   porTipoOperacion.map(function(r){
+        return '<div class="card"><div class="label" style="margin-bottom:8px">'+esc(r.tipo)+'</div>'
+          + '<div style="font-size:20px;font-weight:700;color:var(--green)">'+r.winRate.toFixed(0)+'%<span style="font-size:11px;color:var(--textDim);font-weight:600"> win rate</span></div>'
+          + '<div style="font-size:11.5px;color:var(--textDim);margin-top:6px">'+r.count+' operaciones · '+r.wins+' ganadas · '+r.losses+' perdidas</div>'
+          + '<div style="font-size:11.5px;color:var(--textDim);margin-top:2px">RR prom. '+r.rrProm.toFixed(2)+'R</div>'
+          + '<div style="font-size:14px;font-weight:700;margin-top:6px;color:'+(r.profit>=0?'var(--green)':'var(--red)')+'">'+fmtNum(r.profit)+'</div>'
+          + '</div>';
+      }).join('')
+  + '</div></div>' : '')
   + (porCuenta.length ? '<div style="padding:22px 18px 0"><h3 style="font-size:15px;font-weight:700;margin-bottom:12px">Operaciones por cuenta</h3><div class="card" style="display:flex;flex-direction:column;gap:12px">'
   +   porCuenta.map(function(r){
         return '<div><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px"><span style="font-size:13px;font-weight:600">'+esc(r.account.name)+'</span><span style="font-size:12px;color:'+(r.profit>=0?'var(--green)':'var(--red)')+';font-weight:700">'+fmtMoney(r.profit,r.account.currency)+'</span></div>'
@@ -1976,6 +2131,7 @@ supabaseClient.from('accounts').select('id').limit(1).then(function(res){
       stop_loss: numOrNull(op.stopLoss), take_profit: numOrNull(op.takeProfit), rr: numOrNull(op.rr),
       resultado: op.resultado, beneficio: numOrNull(op.beneficio), tipo_entrada: op.tipoEntrada,
       checklist: op.checklist || {}, observaciones: op.observaciones, noticias: op.noticias || [],
+      tipo_operacion: op.tipoOperacion || null,
       local_created_at: op.createdAt || null
     };
   }
@@ -2114,6 +2270,14 @@ supabaseClient.from('accounts').select('id').limit(1).then(function(res){
     syncEnqueue('checklist_templates', 'upsert', { id: 'default', questions: t || [] });
   };
 
+  var _saveRules = saveRules;
+  saveRules = function(rules){
+    _saveRules(rules);
+    syncArrayDiff('rules', rules, 'id', function(r){
+      return { id: r.id, texto: r.texto, categoria: r.categoria, no_negociable: !!r.noNegociable, activa: !!r.activa, local_created_at: r.createdAt || null };
+    }, 'hm_sync_snap_rules');
+  };
+
   /* ---------- recuperación completa (dispositivo nuevo / perdiste el teléfono) ---------- */
   function syncPullAll(){
     return Promise.all([
@@ -2128,7 +2292,8 @@ supabaseClient.from('accounts').select('id').limit(1).then(function(res){
       supabaseClient.from('study_ranges').select('*'),
       supabaseClient.from('study_images').select('*'),
       supabaseClient.from('checklist_templates').select('*'),
-      supabaseClient.from('movements').select('*')
+      supabaseClient.from('movements').select('*'),
+      supabaseClient.from('rules').select('*')
     ]).then(function(results){
       var accounts = results[0].data || [];
       var operations = results[1].data || [];
@@ -2142,6 +2307,7 @@ supabaseClient.from('accounts').select('id').limit(1).then(function(res){
       var studyImages = results[9].data || [];
       var templates = results[10].data || [];
       var movementsData = results[11].data || [];
+      var rulesData = results[12].data || [];
 
       var localAccounts = accounts.map(function(a){
         return { id: a.id, name: a.name, type: a.type, currency: a.currency, balanceInicial: a.balance_inicial };
@@ -2170,6 +2336,7 @@ supabaseClient.from('accounts').select('id').limit(1).then(function(res){
           precioEntrada: o.precio_entrada, stopLoss: o.stop_loss, takeProfit: o.take_profit, rr: o.rr,
           resultado: o.resultado, beneficio: o.beneficio, tipoEntrada: o.tipo_entrada,
           checklist: o.checklist || {}, observaciones: o.observaciones, noticias: o.noticias || [],
+          tipoOperacion: o.tipo_operacion || '',
           imagenesAntes: slots.antes.map(function(i){ return i.id; }),
           imagenesDurante: slots.durante.map(function(i){ return i.id; }),
           imagenesResultado: slots.resultado.map(function(i){ return i.id; }),
@@ -2200,6 +2367,13 @@ supabaseClient.from('accounts').select('id').limit(1).then(function(res){
 
       var tpl = templates.find(function(t){ return t.id === 'default'; });
       if (tpl) lsSet('hm_checklist_template', tpl.questions);
+
+      if (rulesData.length) {
+        var localRules = rulesData.map(function(r){
+          return { id: r.id, texto: r.texto, categoria: r.categoria, noNegociable: !!r.no_negociable, activa: r.activa !== false, createdAt: r.local_created_at || Date.now() };
+        });
+        lsSet('hm_rules', localRules);
+      }
 
       var rangesByStudy = {};
       studyRanges.forEach(function(r){
@@ -2271,4 +2445,4 @@ supabaseClient.from('accounts').select('id').limit(1).then(function(res){
 })();
 </script>
 </body>
-  </html>
+</html>
