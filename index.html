@@ -106,8 +106,6 @@
   .thumb-add{width:90px;height:68px;border-radius:10px;border:1px dashed var(--border);background:transparent;
     display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:var(--textDim);cursor:pointer;}
 </style>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 </head>
 <body>
 <div id="app"></div>
@@ -260,7 +258,7 @@ function migrateLegacyImages(){
   var studyTasks = idx.map(function(meta){
     var study = loadStudy(meta.id);
     if (!study) return Promise.resolve();
-    var ranges = [study.h4].concat(study.h1||[]).concat(study.m15||[]);
+    var ranges = [study.h4].concat(study.h1||[]).concat(study.m15||[]).concat(study['1d']||[]);
     return Promise.all(ranges.map(function(r){ return migrateArray(r && r.images); })).then(function(){ saveStudy(study); });
   });
   jobs.push(Promise.all(studyTasks));
@@ -272,7 +270,7 @@ function collectImageIdsFromOperation(op){
   return [].concat(op.imagenesAntes||[], op.imagenesDurante||[], op.imagenesResultado||[]);
 }
 function collectImageIdsFromStudy(study){
-  var ranges = [study.h4].concat(study.h1||[]).concat(study.m15||[]);
+  var ranges = [study.h4].concat(study.h1||[]).concat(study.m15||[]).concat(study['1d']||[]);
   var ids = [];
   ranges.forEach(function(r){ if (r && r.images) ids = ids.concat(r.images); });
   return ids;
@@ -468,7 +466,7 @@ function emptyStudy(par, fecha){
   return {
     id: uid('study'), par: par, fecha: fecha, estado: 'En progreso', createdAt: Date.now(),
     h4: { images: [], checklist: emptyChecklistAnswers(state.checklistTemplate), observaciones: '' },
-    h1: [], m15: []
+    h1: [], m15: [], '1d': []
   };
 }
 function compressImageFile(file, maxW, quality, cb){
@@ -939,7 +937,7 @@ function ruleRow(rule){
     +     '</div>'
     +     '<div style="font-size:13.5px;line-height:1.5">' + esc(rule.texto) + '</div>'
     +   '</div>'
-    +   '<button class="iconbtn rule-delete-btn" data-id="' + rule.id + '" style="color:var(--red);flex-shrink:0">' + icon('trash') + '</button>'
+    +   '<button class="iconbtn rule-delete-btn" data-id="' + rule.id + '" style="color:var(--red);flex-shrink:0;font-size:18px;background:none">🗑️</button>'
     + '</div>'
     + '</div>';
 }
@@ -1277,6 +1275,7 @@ function renderDiarioForm(){
 function renderCapturasCard(op){
   function slot(field, label){
     var imgs = op[field] || [];
+    var inputId = 'op-img-input-' + field;
     var thumbs = imgs.map(function(src,i){
       return '<div class="thumb"><img class="zoomable-img" src="'+resolveImgSrc(src)+'"><button class="rm rm-op-img" data-field="'+field+'" data-idx="'+i+'">'+icon('x')+'</button></div>';
     }).join('');
@@ -1284,8 +1283,8 @@ function renderCapturasCard(op){
       + '<div style="font-size:12.5px;color:var(--textDim);margin-bottom:8px;font-weight:600">'+label+'</div>'
       + '<div style="display:flex;flex-wrap:wrap;gap:8px">'
       +   thumbs
-      +   '<button class="thumb-add op-img-add" data-field="'+field+'">'+icon('image')+'<span style="font-size:9.5px">Agregar</span></button>'
-      +   '<input type="file" accept="image/*" multiple hidden class="op-img-input" data-field="'+field+'">'
+      +   '<label class="thumb-add op-img-add" for="'+inputId+'" data-field="'+field+'">'+icon('image')+'<span style="font-size:9.5px">Agregar</span></label>'
+      +   '<input type="file" accept="image/*" multiple hidden id="'+inputId+'" class="op-img-input" data-field="'+field+'">'
       + '</div></div>';
   }
   return '<div class="card">'
@@ -1298,9 +1297,10 @@ function renderCapturasCard(op){
 
 function bindCapturasEvents(){
   var op = state.editingOp;
-  document.querySelectorAll('.op-img-add').forEach(function(btn){
-    btn.addEventListener('click', function(){
-      var field = btn.getAttribute('data-field');
+  document.querySelectorAll('.op-img-add').forEach(function(lbl){
+    lbl.addEventListener('click', function(e){
+      e.preventDefault();
+      var field = lbl.getAttribute('data-field');
       var input = document.querySelector('.op-img-input[data-field="'+field+'"]');
       if (input) input.click();
     });
@@ -1808,13 +1808,13 @@ function persistCurrentStudy(){
 function renderBibliotecaStudy(){
   var s = state.currentStudy;
   var tf = state.studyTF;
-  var list = tf==='h1' ? s.h1 : tf==='m15' ? s.m15 : null;
+  var list = tf==='h1' ? s.h1 : tf==='m15' ? s.m15 : tf==='1d' ? s['1d'] : null;
   var activeRange = tf==='h4' ? s.h4 : (list||[]).find(function(r){return r.id===state.studyRangeId;});
   var activeIdx = list ? list.findIndex(function(r){return r.id===state.studyRangeId;})+1 : null;
 
-  var segHtml = ['h4','h1','m15'].map(function(k){
-    var label = k==='h4'?'4H':k==='h1'?'1H':'15M';
-    var count = k==='h1'?s.h1.length:k==='m15'?s.m15.length:null;
+  var segHtml = ['1d','h4','h1','m15'].map(function(k){
+    var label = k==='h4'?'4H':k==='h1'?'1H':k==='m15'?'15M':'1D';
+    var count = k==='h1'?s.h1.length:k==='m15'?s.m15.length:k==='1d'?s['1d'].length:null;
     return '<button class="tf-seg-btn ' + (tf===k?'active':'') + '" data-tf="'+k+'" style="flex:1;padding:10px 0;border-radius:13px;border:1px solid '+(tf===k?'var(--gold)':'var(--border)')+';background:'+(tf===k?'var(--goldSoft)':'var(--card)')+';color:'+(tf===k?'var(--gold)':'var(--textDim)')+';font-weight:700;font-size:13px;cursor:pointer">'+label+(count!==null?' <span style="font-size:10.5px;opacity:0.75">('+count+')</span>':'')+'</button>';
   }).join('');
 
@@ -1828,13 +1828,14 @@ function renderBibliotecaStudy(){
       + '</div>';
   }
 
+  var tfLabel = tf==='h1'?'1H':tf==='m15'?'15M':'1D';
   var contentHtml;
   if (activeRange) {
-    contentHtml = renderRangePanel(tf, tf==='h4'?'Rango de trabajo · 4H':tf==='h1'?'Rango 1H #'+activeIdx:'15M #'+activeIdx, activeRange, tf!=='h4');
+    contentHtml = renderRangePanel(tf, tf==='h4'?'Rango de trabajo · 4H':tf==='h1'?'Rango 1H #'+activeIdx:tf==='m15'?'15M #'+activeIdx:'1D #'+activeIdx, activeRange, tf!=='h4');
   } else {
     contentHtml = '<div class="card" style="text-align:center;padding:30px 18px"><div style="color:var(--textDim);font-size:13.5px;margin-bottom:14px">'
-      + (list && list.length===0 ? 'Aún no hay rangos de '+(tf==='h1'?'1H':'15M')+'.' : 'Selecciona un rango de '+(tf==='h1'?'1H':'15M')+'.')
-      + '</div><button class="btn btn-primary" id="add-range-btn-2">'+icon('plus')+' Agregar '+(tf==='h1'?'1H':'15M')+'</button></div>';
+      + (list && list.length===0 ? 'Aún no hay rangos de '+tfLabel+'.' : 'Selecciona un rango de '+tfLabel+'.')
+      + '</div><button class="btn btn-primary" id="add-range-btn-2">'+icon('plus')+' Agregar '+tfLabel+'</button></div>';
   }
 
   return '<div class="topbar">'
@@ -1870,7 +1871,7 @@ function renderRangePanel(level, title, range, showDelete){
     + (showDelete ? '<button id="delete-range-btn" style="background:none;border:none;color:var(--textFaint);cursor:pointer">'+icon('trash')+'</button>' : '') + '</div>'
   + '<div class="card" style="margin-bottom:14px"><div class="label" style="margin-bottom:10px">Capturas</div>'
   +   '<div style="display:flex;flex-wrap:wrap;gap:10px">' + imagesHtml
-  +     '<button class="thumb-add" id="add-img-btn">'+icon('image')+'<span style="font-size:9.5px">Agregar</span></button>'
+  +     '<label class="thumb-add" id="add-img-btn" for="img-file-input">'+icon('image')+'<span style="font-size:9.5px">Agregar</span></label>'
   +     '<input type="file" accept="image/*" multiple hidden id="img-file-input">'
   +   '</div></div>'
   + '<div class="card" style="margin-bottom:14px"><div class="label" style="margin-bottom:10px">Checklist</div>'+checklistHtml+'</div>'
@@ -1933,7 +1934,9 @@ function bindBibliotecaStudyEvents(){
 
   var addImgBtn = document.getElementById('add-img-btn'); var fileInput = document.getElementById('img-file-input');
   if (addImgBtn && fileInput) {
-    addImgBtn.addEventListener('click', function(){ fileInput.click(); });
+    addImgBtn.addEventListener('click', function(e){ e.preventDefault(); fileInput.click(); });
+  }
+  if (fileInput) {
     fileInput.addEventListener('change', function(){
       if (!fileInput.files.length) return;
       activeRange.images = activeRange.images || [];
@@ -1988,6 +1991,8 @@ document.addEventListener('click', function(e){
 render();
 migrateLegacyImages().then(function(){ render(); }).catch(function(){});
 </script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script>
   const SUPABASE_URL = "https://bjyuttqnqoafkcyqkzsy.supabase.co".trim();
 const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJqeXV0dHFucW9hZmtjeXFrenN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYyOTU0MTYsImV4cCI6MjEwMTg3MTQxNn0.wXIysTatPhsXEVVfns59uQWK2-tYNgq-K6F5U5eEj04".trim();
@@ -2187,8 +2192,9 @@ supabaseClient.from('accounts').select('id').limit(1).then(function(res){
     var rangeIds = [h4Id];
     (study.h1 || []).forEach(function(r, i){ syncRange(study.id, 'h1', r, r.id, i); rangeIds.push(r.id); });
     (study.m15 || []).forEach(function(r, i){ syncRange(study.id, 'm15', r, r.id, i); rangeIds.push(r.id); });
+    (study['1d'] || []).forEach(function(r, i){ syncRange(study.id, '1d', r, r.id, i); rangeIds.push(r.id); });
 
-    // detectar rangos h1/m15 eliminados
+    // detectar rangos h1/m15/1d eliminados
     var snapshotKey = 'hm_sync_snap_ranges_' + study.id;
     var prevIds = lsGet(snapshotKey, []);
     prevIds.forEach(function(id){
@@ -2391,6 +2397,7 @@ supabaseClient.from('accounts').select('id').limit(1).then(function(res){
         var h4 = ranges.find(function(r){ return r.timeframe === 'h4'; });
         var h1 = ranges.filter(function(r){ return r.timeframe === 'h1'; });
         var m15 = ranges.filter(function(r){ return r.timeframe === 'm15'; });
+        var d1 = ranges.filter(function(r){ return r.timeframe === '1d'; });
 
         function buildRange(r){
           var imgs = (imagesByRange[r.id] || []).slice().sort(function(x,y){ return x.orden - y.orden; });
@@ -2401,7 +2408,7 @@ supabaseClient.from('accounts').select('id').limit(1).then(function(res){
         var study = {
           id: s.id, par: s.par, fecha: s.fecha, estado: s.estado, createdAt: s.local_created_at || Date.now(),
           h4: h4 ? buildRange(h4) : { images: [], checklist: {}, observaciones: '' },
-          h1: h1.map(buildRange), m15: m15.map(buildRange)
+          h1: h1.map(buildRange), m15: m15.map(buildRange), '1d': d1.map(buildRange)
         };
         lsSet('hm_study_' + s.id, study);
         return { id: s.id, par: s.par, fecha: s.fecha, estado: s.estado };
