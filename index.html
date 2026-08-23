@@ -380,17 +380,45 @@ var ASSETS = {
   'Materias primas': ['USOIL','UKOIL'],
   'Criptomonedas': ['BTC/USD','ETH/USD']
 };
-var RISK_CHECKLIST = [
-  '¿Estás completamente seguro de tomar esta operación?','¿El POI es Decisional?','¿El POI es Extremo?',
-  '¿Sacó Liquidez?','¿Tiene Imbalance?','¿Desde ese Order Block nació un movimiento fuerte?',
-  '¿Está alineado con la temporalidad mayor?','¿Está dentro del rango correcto?',
-  '¿Está en Premium o Discount?','¿Cumple todas mis reglas?'
-];
-var CONF_CHECKLIST = [
-  '¿Hubo vela de confirmación clara?','¿Ruptura de estructura confirmada (BOS/CHoCH)?',
-  '¿Hubo retest exitoso del nivel?','¿El momentum está a favor de la dirección?',
-  '¿Hay confluencia con la temporalidad mayor?','¿Está en Premium o Discount?','¿Cumple todas mis reglas?'
-];
+function defaultRiskChecklist(){
+  return [
+    'Identificar el rango de trabajo.',
+    'Trazar en el rango de trabajo la herramienta de Fibonacci.',
+    'Buscar por debajo del 50% el POI decisional o extremo.',
+    'Observar si los POI tienen imbalance.',
+    'Refinarlos hasta 10M y 5M si te lo permiten.',
+    'Si es un POI de TF mayor, se puede refinar hasta 1H.',
+    'Localizar la liquidez en el rango de trabajo.',
+    'Esperar que el mercado deje liquidez por encima del POI.',
+    'Esperar que el mercado le saque liquidez al POI.',
+    'Entrar y poner el TP hasta crear un nuevo BOS y SL mínimo 15 pips.'
+  ];
+}
+function defaultConfChecklist(){
+  return [
+    'Ubicar en tu rango un POI de alto interés (decisional o extremo).',
+    'Esperar que el precio reaccione en el POI o que le saque la liquidez.',
+    'Observar si el precio hace una finalización o inicio de rango.',
+    'Buscar un decisional o extremo.',
+    'Esperar que el precio deje liquidez, preferiblemente inducción.',
+    'Entrar con un SL hasta el último High o Low.',
+    'Dejar que cumpla con su análisis, ya sea TP o SL.'
+  ];
+}
+function loadRiskChecklist(){
+  var v = lsGet('hm_risk_checklist', null);
+  if (v && v.length) return v;
+  var def = defaultRiskChecklist(); lsSet('hm_risk_checklist', def); return def;
+}
+function saveRiskChecklist(arr){ lsSet('hm_risk_checklist', arr); }
+function loadConfChecklist(){
+  var v = lsGet('hm_conf_checklist', null);
+  if (v && v.length) return v;
+  var def = defaultConfChecklist(); lsSet('hm_conf_checklist', def); return def;
+}
+function saveConfChecklist(arr){ lsSet('hm_conf_checklist', arr); }
+var RISK_CHECKLIST = loadRiskChecklist();
+var CONF_CHECKLIST = loadConfChecklist();
 var MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 var MESES_CORTOS = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 var DIAS_SEMANA = ['L','M','X','J','V','S','D'];
@@ -557,6 +585,7 @@ function render(){
   else if (state.view === 'biblioteca-study') html = renderBibliotecaStudy();
   else if (state.view === 'config') html = renderConfig();
   else if (state.view === 'reglas') html = renderReglas();
+  else if (state.view === 'checklists-entrada') html = renderChecklistsEntrada();
 
   var deep = (state.view === 'diario-form' || state.view === 'biblioteca-study');
   app.style.paddingBottom = deep ? '10px' : '96px';
@@ -574,6 +603,7 @@ function render(){
   else if (state.view === 'biblioteca-study') bindBibliotecaStudyEvents();
   else if (state.view === 'config') bindConfigEvents();
   else if (state.view === 'reglas') bindReglasEvents();
+  else if (state.view === 'checklists-entrada') bindChecklistsEntradaEvents();
 }
 
 function goTo(view){ state.view = view; render(); }
@@ -907,6 +937,7 @@ function renderMas(){
   +   masRow('receipt','Impuestos','Estimación y pagos','mas-impuestos')
   +   masRow('landmark','Cuentas','Cambiar o crear cuentas','mas-cuentas')
   +   masRow('listcheck','Mis reglas','Tus reglas de trading, editables','mas-reglas')
+  +   masRow('listcheck','Checklists de entrada','Confirmación y Riesgo, editables','mas-checklists-entrada')
   +   masRow('settings2','Configuración','Copia de seguridad: exportar / restaurar','mas-config')
   + '</div>';
 }
@@ -922,6 +953,7 @@ function bindMasEvents(){
   var i = document.getElementById('mas-impuestos'); if (i) i.addEventListener('click', function(){ goTo('impuestos'); });
   var c = document.getElementById('mas-cuentas'); if (c) c.addEventListener('click', openAccountSwitcherModal);
   var rg = document.getElementById('mas-reglas'); if (rg) rg.addEventListener('click', function(){ goTo('reglas'); });
+  var ce = document.getElementById('mas-checklists-entrada'); if (ce) ce.addEventListener('click', function(){ goTo('checklists-entrada'); });
   var cfg = document.getElementById('mas-config'); if (cfg) cfg.addEventListener('click', function(){ goTo('config'); });
 }
 
@@ -1014,6 +1046,84 @@ function openRuleModal(rule){
       });
     }
     saveRules(state.rules);
+    closeModal(); render();
+  });
+}
+
+/* ================= CHECKLISTS DE ENTRADA (Confirmación y Riesgo) — editables ================= */
+function checklistEntradaRow(listKey, text, idx){
+  return '<div class="checklist-item" style="align-items:flex-start">'
+    + '<span style="flex:1;font-size:13px;line-height:1.5">' + (idx+1) + '. ' + esc(text) + '</span>'
+    + '<div style="display:flex;gap:6px;flex-shrink:0">'
+    +   '<button class="iconbtn ce-edit-btn" data-list="' + listKey + '" data-idx="' + idx + '" style="width:30px;height:30px">' + icon('pencil') + '</button>'
+    +   '<button class="iconbtn ce-delete-btn" data-list="' + listKey + '" data-idx="' + idx + '" style="width:30px;height:30px;color:var(--red)">' + icon('trash') + '</button>'
+    + '</div></div>';
+}
+function renderChecklistsEntrada(){
+  var confHtml = CONF_CHECKLIST.length
+    ? CONF_CHECKLIST.map(function(t,i){ return checklistEntradaRow('conf', t, i); }).join('')
+    : '<div class="empty">Sin elementos todavía.</div>';
+  var riskHtml = RISK_CHECKLIST.length
+    ? RISK_CHECKLIST.map(function(t,i){ return checklistEntradaRow('risk', t, i); }).join('')
+    : '<div class="empty">Sin elementos todavía.</div>';
+  return '<div class="topbar"><button class="iconbtn" id="back-btn">' + icon('back') + '</button><h2 style="font-size:17px;font-weight:700;flex:1">Checklists de entrada</h2></div>'
+  + '<div style="padding:16px 18px 0"><p style="color:var(--textDim);font-size:12.5px;margin:0">Estas listas se usan al registrar una operación, según el tipo de entrada que elijas. Puedes agregar, editar o borrar elementos libremente.</p></div>'
+
+  + '<div style="padding:20px 18px 0">'
+  +   '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'
+  +     '<h3 style="font-size:15px;font-weight:700;margin:0">Entrada por Confirmación</h3>'
+  +     '<button class="iconbtn ce-add-btn" data-list="conf" style="color:var(--gold);background:var(--goldSoft)">' + icon('plus') + '</button>'
+  +   '</div>'
+  +   '<div class="card" style="display:flex;flex-direction:column;gap:8px">' + confHtml + '</div>'
+  + '</div>'
+
+  + '<div style="padding:22px 18px 30px">'
+  +   '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'
+  +     '<h3 style="font-size:15px;font-weight:700;margin:0">Entrada por Riesgo</h3>'
+  +     '<button class="iconbtn ce-add-btn" data-list="risk" style="color:var(--gold);background:var(--goldSoft)">' + icon('plus') + '</button>'
+  +   '</div>'
+  +   '<div class="card" style="display:flex;flex-direction:column;gap:8px">' + riskHtml + '</div>'
+  + '</div>';
+}
+function bindChecklistsEntradaEvents(){
+  var back = document.getElementById('back-btn'); if (back) back.addEventListener('click', function(){ goTo('mas'); });
+  document.querySelectorAll('.ce-add-btn').forEach(function(b){
+    b.addEventListener('click', function(){ openChecklistItemModal(b.getAttribute('data-list'), null); });
+  });
+  document.querySelectorAll('.ce-edit-btn').forEach(function(b){
+    b.addEventListener('click', function(){ openChecklistItemModal(b.getAttribute('data-list'), parseInt(b.getAttribute('data-idx'),10)); });
+  });
+  document.querySelectorAll('.ce-delete-btn').forEach(function(b){
+    b.addEventListener('click', function(){
+      if (!confirm('¿Eliminar este elemento?')) return;
+      var listKey = b.getAttribute('data-list'), idx = parseInt(b.getAttribute('data-idx'),10);
+      if (listKey === 'conf') { CONF_CHECKLIST.splice(idx,1); saveConfChecklist(CONF_CHECKLIST); }
+      else { RISK_CHECKLIST.splice(idx,1); saveRiskChecklist(RISK_CHECKLIST); }
+      render();
+    });
+  });
+}
+function openChecklistItemModal(listKey, idx){
+  var isNew = idx === null || idx === undefined;
+  var arr = listKey === 'conf' ? CONF_CHECKLIST : RISK_CHECKLIST;
+  var currentText = isNew ? '' : arr[idx];
+  var listLabel = listKey === 'conf' ? 'Entrada por Confirmación' : 'Entrada por Riesgo';
+  openModal(''
+    + '<h2 style="font-size:18px;font-weight:700;margin-bottom:4px">' + (isNew ? 'Agregar elemento' : 'Editar elemento') + '</h2>'
+    + '<p style="color:var(--textDim);font-size:13px;margin-bottom:16px">' + listLabel + '</p>'
+    + '<div class="field"><label class="label">Elemento</label><textarea id="ce-item-texto" rows="3" placeholder="Escribe el elemento…">' + esc(currentText) + '</textarea></div>'
+    + '<div style="display:flex;gap:10px;margin-top:10px">'
+    +   '<button class="btn btn-ghost" style="flex:1;justify-content:center" onclick="closeModal()">Cancelar</button>'
+    +   '<button class="btn btn-primary" style="flex:1" id="ce-item-save-btn">' + icon('check') + ' Guardar</button>'
+    + '</div>'
+  );
+  autoExpandTextarea(document.getElementById('ce-item-texto'));
+  document.getElementById('ce-item-save-btn').addEventListener('click', function(){
+    var texto = document.getElementById('ce-item-texto').value.trim();
+    if (!texto) return;
+    if (isNew) { arr.push(texto); }
+    else { arr[idx] = texto; }
+    if (listKey === 'conf') saveConfChecklist(arr); else saveRiskChecklist(arr);
     closeModal(); render();
   });
 }
