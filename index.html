@@ -109,6 +109,20 @@
 </head>
 <body>
 <div id="app"></div>
+<script>
+  window.addEventListener('error', function(e){
+    var appEl = document.getElementById('app');
+    if (appEl && !appEl.innerHTML.trim()) {
+      appEl.innerHTML = '<div style="padding:24px;color:#F5F5F7;font-family:sans-serif;font-size:13px;line-height:1.6">'
+        + '<div style="color:#F0645F;font-weight:700;margin-bottom:10px">La app encontró un error al cargar:</div>'
+        + '<div style="background:#15161B;border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:12px;white-space:pre-wrap;word-break:break-word">'
+        + (e.message || 'Error desconocido') + '\\n\\nArchivo: ' + (e.filename || '—') + ' · Línea: ' + (e.lineno || '—')
+        + '</div>'
+        + '<div style="margin-top:14px;color:#8B8D97">Toca y mantené presionado para copiar este mensaje y envíaselo a Claude.</div>'
+        + '</div>';
+    }
+  });
+</script>
 
 <script>
 /* ================= STORAGE (localStorage — 100% offline) ================= */
@@ -484,6 +498,7 @@ function emptyOperation(cuenta){
   };
 }
 function accountOps(name){ return state.operations.filter(function(o){ return o.cuenta === name; }); }
+function opsEjecutadas(ops){ return ops.filter(function(o){ return o.resultado !== 'No Abierta'; }); }
 
 /* ================= SMC study helpers ================= */
 function emptyChecklistAnswers(template){
@@ -747,11 +762,12 @@ function renderHome(){
   var st = computeAccountStats(acc);
   var goalHtml = renderGoalCard(acc, st.balance);
 
-  var wins = st.ops.filter(function(o){ return o.resultado==='Ganada'; }).length;
-  var losses = st.ops.filter(function(o){ return o.resultado==='Perdida'; }).length;
-  var be = st.ops.filter(function(o){ return o.resultado==='Break Even'; }).length;
-  var winRate = st.ops.length ? Math.round((wins/st.ops.length)*100) : 0;
-  var rrVals = st.ops.map(function(o){ return parseFloat(o.rr); }).filter(function(v){ return !isNaN(v); });
+  var ejecutadas = opsEjecutadas(st.ops);
+  var wins = ejecutadas.filter(function(o){ return o.resultado==='Ganada'; }).length;
+  var losses = ejecutadas.filter(function(o){ return o.resultado==='Perdida'; }).length;
+  var be = ejecutadas.filter(function(o){ return o.resultado==='Break Even'; }).length;
+  var winRate = ejecutadas.length ? Math.round((wins/ejecutadas.length)*100) : 0;
+  var rrVals = ejecutadas.map(function(o){ return parseFloat(o.rr); }).filter(function(v){ return !isNaN(v); });
   var rrProm = rrVals.length ? (rrVals.reduce(function(a,v){return a+v;},0)/rrVals.length) : 0;
 
   return accountSwitcherBar()
@@ -1294,8 +1310,9 @@ function renderDiarioList(){
   var chips = ['Todas'].concat(names).map(function(a){
     return '<button class="chip filter-chip ' + (state.filterCuenta===a?'active':'') + '" data-cuenta="' + esc(a) + '">' + esc(a) + '</button>';
   }).join('');
-  var wins = ops.filter(function(o){return o.resultado==='Ganada';}).length;
-  var winRate = ops.length ? Math.round((wins/ops.length)*100) : 0;
+  var ejecutadas = opsEjecutadas(ops);
+  var wins = ejecutadas.filter(function(o){return o.resultado==='Ganada';}).length;
+  var winRate = ejecutadas.length ? Math.round((wins/ejecutadas.length)*100) : 0;
   var profitTotal = ops.reduce(function(a,o){return a+(parseFloat(o.beneficio)||0);},0);
 
   var listHtml = ops.length===0 ? '<div class="empty">Sin operaciones. Toca + para registrar la primera.</div>' : ops.map(renderOpRow).join('');
@@ -1367,7 +1384,7 @@ function renderDiarioForm(){
   +     '<div class="row2 field"><div><label class="label">Lotaje</label><input inputmode="decimal" id="f-lotaje" value="'+esc(op.lotaje)+'" placeholder="0.10"></div><div><label class="label">Riesgo %</label><input inputmode="decimal" id="f-riesgo" value="'+esc(op.riesgo)+'" placeholder="1"></div></div>'
   +     '<div class="row2 field"><div><label class="label">Entrada</label><input inputmode="decimal" id="f-entrada" value="'+esc(op.precioEntrada)+'"></div><div><label class="label">Stop Loss</label><input inputmode="decimal" id="f-sl" value="'+esc(op.stopLoss)+'"></div></div>'
   +     '<div class="row2 field"><div><label class="label">Take Profit</label><input inputmode="decimal" id="f-tp" value="'+esc(op.takeProfit)+'"></div><div><label class="label">RR</label><input inputmode="decimal" id="f-rr" value="'+esc(op.rr)+'" style="color:var(--gold);font-weight:700"></div></div>'
-  +     '<div class="field"><label class="label">Resultado</label><div class="seg" id="f-resultado"><button data-val="Ganada" class="'+(op.resultado==='Ganada'?'active':'')+'">Ganada</button><button data-val="Perdida" class="'+(op.resultado==='Perdida'?'active':'')+'">Perdida</button><button data-val="Break Even" class="'+(op.resultado==='Break Even'?'active':'')+'">BE</button></div></div>'
+  +     '<div class="field"><label class="label">Resultado</label><div class="seg" id="f-resultado"><button data-val="Ganada" class="'+(op.resultado==='Ganada'?'active':'')+'">Ganada</button><button data-val="Perdida" class="'+(op.resultado==='Perdida'?'active':'')+'">Perdida</button><button data-val="Break Even" class="'+(op.resultado==='Break Even'?'active':'')+'">BE</button><button data-val="No Abierta" class="'+(op.resultado==='No Abierta'?'active':'')+'">No Abierta</button></div></div>'
   +     '<div class="field"><label class="label">Beneficio / Pérdida</label><input type="text" inputmode="text" pattern="[+-]?[0-9]*\.?[0-9]*" id="f-beneficio" value="'+esc(op.beneficio)+'" placeholder="Ej. +500 o -200" style="color:'+(parseFloat(op.beneficio)<0?'var(--red)':'var(--green)')+';font-weight:700"></div>'
   +   '</div>'
   +   renderCapturasCard(op)
@@ -1646,10 +1663,11 @@ function openDayModal(dateKey){
 function renderEstadisticas(){
   var accNames = state.accounts.map(function(a){return a.name;});
   var scoped = state.statsScope==='Todas' ? state.operations : state.operations.filter(function(o){return o.cuenta===state.statsScope;});
-  var total = scoped.length;
-  var wins = scoped.filter(function(o){return o.resultado==='Ganada';}).length;
+  var ejecutadas = opsEjecutadas(scoped);
+  var total = ejecutadas.length;
+  var wins = ejecutadas.filter(function(o){return o.resultado==='Ganada';}).length;
   var winRate = total?(wins/total*100):0;
-  var rrVals = scoped.map(function(o){return parseFloat(o.rr);}).filter(function(v){return !isNaN(v);});
+  var rrVals = ejecutadas.map(function(o){return parseFloat(o.rr);}).filter(function(v){return !isNaN(v);});
   var rrProm = rrVals.length ? rrVals.reduce(function(a,v){return a+v;},0)/rrVals.length : 0;
   var profitTotal = scoped.reduce(function(a,o){return a+(parseFloat(o.beneficio)||0);},0);
 
@@ -1658,7 +1676,7 @@ function renderEstadisticas(){
   sorted.forEach(function(o){ running += (parseFloat(o.beneficio)||0); peak=Math.max(peak,running); if(peak>0) maxDD=Math.max(maxDD, ((peak-running)/peak)*100); });
 
   var mejor=null, peor=null;
-  scoped.forEach(function(o){
+  ejecutadas.forEach(function(o){
     var b = parseFloat(o.beneficio)||0;
     if (!mejor || b > (parseFloat(mejor.beneficio)||0)) mejor=o;
     if (!peor || b < (parseFloat(peor.beneficio)||0)) peor=o;
@@ -1687,7 +1705,7 @@ function renderEstadisticas(){
   var maxCuentaCount = Math.max(1, Math.max.apply(null, porCuenta.map(function(r){return r.count;})||[1]));
 
   var porTipoOperacion = ['Pro-tendencia','Contra-tendencia'].map(function(tipo){
-    var ops = scoped.filter(function(o){return o.tipoOperacion===tipo;});
+    var ops = opsEjecutadas(scoped.filter(function(o){return o.tipoOperacion===tipo;}));
     var wins = ops.filter(function(o){return o.resultado==='Ganada';}).length;
     var losses = ops.filter(function(o){return o.resultado==='Perdida';}).length;
     var profit = ops.reduce(function(s,o){return s+(parseFloat(o.beneficio)||0);},0);
