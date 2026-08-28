@@ -388,11 +388,12 @@ function saveRules(rules){ lsSet('hm_rules', rules); }
 
 /* ================= DATA ================= */
 var ASSETS = {
-  'Forex': ['EUR/USD','GBP/USD','USD/JPY','USD/CAD','AUD/USD'],
-  'Metales': ['XAU/USD (Oro)','XAG/USD'],
-  'Índices': ['US30','NAS100','SPX500'],
-  'Materias primas': ['USOIL','UKOIL'],
-  'Criptomonedas': ['BTC/USD','ETH/USD']
+  'Forex': ['EUR/USD','GBP/USD','USD/JPY','USD/CHF','AUD/USD','USD/CAD','NZD/USD','EUR/GBP','EUR/JPY','EUR/CHF','EUR/AUD','EUR/CAD','EUR/NZD','GBP/JPY','GBP/CHF','GBP/AUD','GBP/CAD','GBP/NZD','AUD/JPY','AUD/NZD','AUD/CAD','AUD/CHF','CAD/JPY','CAD/CHF','CHF/JPY','NZD/JPY','NZD/CAD','NZD/CHF'],
+  'Índices': ['NASDAQ 100','S&P 500','Dow Jones','Russell 2000','DAX 40','FTSE 100','CAC 40','Euro Stoxx 50','IBEX 35','Nikkei 225','Hang Seng','ASX 200'],
+  'Metales': ['XAU/USD (Oro)','XAG/USD (Plata)','Platino','Paladio','Cobre'],
+  'Materias primas': ['WTI','Brent','Gas Natural','Gasolina','Cacao','Café','Maíz','Trigo','Soja','Azúcar','Algodón'],
+  'Criptomonedas': ['BTC/USD','ETH/USD','SOL/USD','XRP/USD','BNB/USD','ADA/USD','DOGE/USD','AVAX/USD','DOT/USD','LINK/USD','LTC/USD'],
+  'Acciones': ['AAPL','MSFT','NVDA','AMZN','GOOGL','META','TSLA','NFLX','AMD','INTC','JPM','BAC','COIN']
 };
 function defaultRiskChecklist(){
   return [
@@ -433,11 +434,21 @@ function loadConfChecklist(){
 function saveConfChecklist(arr){ lsSet('hm_conf_checklist', arr); }
 var RISK_CHECKLIST = loadRiskChecklist();
 var CONF_CHECKLIST = loadConfChecklist();
+
+/* ---- Activos personalizados (no tocan ni eliminan los predeterminados de ASSETS) ---- */
+function loadCustomAssets(){ return lsGet('hm_custom_assets', []); }
+function saveCustomAssets(arr){ lsSet('hm_custom_assets', arr); }
+function assetCategories(){ return Object.keys(ASSETS); }
+function assetsForCategory(categoria){
+  var base = ASSETS[categoria] || [];
+  var custom = loadCustomAssets().filter(function(a){ return a.categoria === categoria; }).map(function(a){ return a.simbolo; });
+  return base.concat(custom);
+}
 var MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 var MESES_CORTOS = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 var DIAS_SEMANA = ['L','M','X','J','V','S','D'];
 var ACCOUNT_TYPES = ['Demo','Real','Challenge / Fondeo'];
-var CURRENCIES = ['USD','EUR','BRL','GBP','CAD','AUD','CHF','JPY'];
+var CURRENCIES = ['USD','EUR','GBP','JPY','CHF','CAD','AUD','NZD','BRL','MXN','CNY','HKD','SGD','SEK','NOK','DKK','PLN','CZK','HUF','TRY','ZAR','AED','SAR','INR','KRW'];
 
 var state = {
   view: 'home',
@@ -601,6 +612,7 @@ function render(){
   else if (state.view === 'config') html = renderConfig();
   else if (state.view === 'reglas') html = renderReglas();
   else if (state.view === 'checklists-entrada') html = renderChecklistsEntrada();
+  else if (state.view === 'activos-personalizados') html = renderActivosPersonalizados();
 
   var deep = (state.view === 'diario-form' || state.view === 'biblioteca-study');
   app.style.paddingBottom = deep ? '10px' : '96px';
@@ -619,6 +631,7 @@ function render(){
   else if (state.view === 'config') bindConfigEvents();
   else if (state.view === 'reglas') bindReglasEvents();
   else if (state.view === 'checklists-entrada') bindChecklistsEntradaEvents();
+  else if (state.view === 'activos-personalizados') bindActivosPersonalizadosEvents();
 }
 
 function goTo(view){ state.view = view; render(); }
@@ -954,6 +967,7 @@ function renderMas(){
   +   masRow('landmark','Cuentas','Cambiar o crear cuentas','mas-cuentas')
   +   masRow('listcheck','Mis reglas','Tus reglas de trading, editables','mas-reglas')
   +   masRow('listcheck','Checklists de entrada','Confirmación y Riesgo, editables','mas-checklists-entrada')
+  +   masRow('layers','Activos personalizados','Agregar tus propios activos','mas-activos')
   +   masRow('settings2','Configuración','Copia de seguridad: exportar / restaurar','mas-config')
   + '</div>';
 }
@@ -970,6 +984,7 @@ function bindMasEvents(){
   var c = document.getElementById('mas-cuentas'); if (c) c.addEventListener('click', openAccountSwitcherModal);
   var rg = document.getElementById('mas-reglas'); if (rg) rg.addEventListener('click', function(){ goTo('reglas'); });
   var ce = document.getElementById('mas-checklists-entrada'); if (ce) ce.addEventListener('click', function(){ goTo('checklists-entrada'); });
+  var ac = document.getElementById('mas-activos'); if (ac) ac.addEventListener('click', function(){ goTo('activos-personalizados'); });
   var cfg = document.getElementById('mas-config'); if (cfg) cfg.addEventListener('click', function(){ goTo('config'); });
 }
 
@@ -1062,6 +1077,81 @@ function openRuleModal(rule){
       });
     }
     saveRules(state.rules);
+    closeModal(); render();
+  });
+}
+
+/* ================= ACTIVOS PERSONALIZADOS ================= */
+function customAssetRow(a){
+  return '<div class="op-row custom-asset-row" data-id="' + a.id + '">'
+    + '<div style="display:flex;align-items:center;gap:10px">'
+    +   '<div style="flex:1">'
+    +     '<div style="font-weight:700;font-size:14px">' + esc(a.simbolo) + (a.nombre ? ' <span style="font-weight:400;color:var(--textDim);font-size:12.5px">· ' + esc(a.nombre) + '</span>' : '') + '</div>'
+    +     '<div style="margin-top:4px"><span class="pill pill-gold">' + esc(a.categoria) + '</span></div>'
+    +   '</div>'
+    +   '<button class="iconbtn ca-delete-btn" data-id="' + a.id + '" style="color:var(--red);flex-shrink:0;font-size:18px;background:none">🗑️</button>'
+    + '</div>'
+    + '</div>';
+}
+function renderActivosPersonalizados(){
+  var assets = loadCustomAssets();
+  var listHtml = assets.length === 0
+    ? '<div class="empty">Aún no agregaste activos personalizados.</div>'
+    : assets.map(customAssetRow).join('');
+  return '<div class="topbar"><button class="iconbtn" id="back-btn">' + icon('back') + '</button><h2 style="font-size:17px;font-weight:700;flex:1">Activos personalizados</h2><button class="iconbtn" id="new-asset-btn" style="color:var(--gold);background:var(--goldSoft)">' + icon('plus') + '</button></div>'
+  + '<div style="padding:16px 18px 0"><p style="color:var(--textDim);font-size:12.5px;margin:0 0 4px">Se suman a los activos predeterminados de cada categoría — tócalo para editarlo.</p></div>'
+  + '<div style="padding:16px 18px 0">' + listHtml + '</div>';
+}
+function bindActivosPersonalizadosEvents(){
+  var back = document.getElementById('back-btn'); if (back) back.addEventListener('click', function(){ goTo('mas'); });
+  var addBtn = document.getElementById('new-asset-btn'); if (addBtn) addBtn.addEventListener('click', function(){ openAssetModal(null); });
+  document.querySelectorAll('.ca-delete-btn').forEach(function(b){
+    b.addEventListener('click', function(e){
+      e.stopPropagation();
+      if (confirm('¿Eliminar este activo personalizado?')) {
+        var id = b.getAttribute('data-id');
+        var assets = loadCustomAssets().filter(function(a){ return a.id !== id; });
+        saveCustomAssets(assets);
+        render();
+      }
+    });
+  });
+  document.querySelectorAll('.custom-asset-row').forEach(function(row){
+    row.addEventListener('click', function(){
+      var asset = loadCustomAssets().find(function(a){ return a.id === row.getAttribute('data-id'); });
+      if (asset) openAssetModal(asset);
+    });
+  });
+}
+function openAssetModal(asset){
+  var isNew = !asset;
+  var draft = asset ? { nombre: asset.nombre, simbolo: asset.simbolo, categoria: asset.categoria } : { nombre: '', simbolo: '', categoria: assetCategories()[0] };
+  var catOptions = assetCategories().map(function(c){ return '<option value="' + esc(c) + '"' + (c === draft.categoria ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('');
+  openModal(''
+    + '<h2 style="font-size:18px;font-weight:700;margin-bottom:4px">' + (isNew ? 'Nuevo activo' : 'Editar activo') + '</h2>'
+    + '<p style="color:var(--textDim);font-size:13px;margin-bottom:16px">Aparecerá en el selector de activos de esa categoría.</p>'
+    + '<div class="field"><label class="label">Símbolo</label><input id="asset-simbolo" placeholder="Ej. AAPL" value="' + esc(draft.simbolo) + '"></div>'
+    + '<div class="field"><label class="label">Nombre (opcional)</label><input id="asset-nombre" placeholder="Ej. Apple" value="' + esc(draft.nombre) + '"></div>'
+    + '<div class="field"><label class="label">Categoría</label><select id="asset-categoria">' + catOptions + '</select></div>'
+    + '<div style="display:flex;gap:10px;margin-top:10px">'
+    +   '<button class="btn btn-ghost" style="flex:1;justify-content:center" onclick="closeModal()">Cancelar</button>'
+    +   '<button class="btn btn-primary" style="flex:1" id="asset-save-btn">' + icon('check') + ' Guardar</button>'
+    + '</div>'
+  );
+  document.getElementById('asset-save-btn').addEventListener('click', function(){
+    var simbolo = document.getElementById('asset-simbolo').value.trim();
+    if (!simbolo) return;
+    var nombre = document.getElementById('asset-nombre').value.trim();
+    var categoria = document.getElementById('asset-categoria').value;
+    var assets = loadCustomAssets();
+    if (isNew) {
+      assets.unshift({ id: uid('asset'), simbolo: simbolo, nombre: nombre, categoria: categoria, createdAt: Date.now() });
+    } else {
+      assets = assets.map(function(a){
+        return a.id === asset.id ? { id: a.id, simbolo: simbolo, nombre: nombre, categoria: categoria, createdAt: a.createdAt } : a;
+      });
+    }
+    saveCustomAssets(assets);
     closeModal(); render();
   });
 }
@@ -1348,7 +1438,7 @@ function renderDiarioForm(){
   if (op.categoria === 'Otro') {
     activoField = '<input id="f-activoManual" placeholder="Escribe el instrumento" value="'+esc(op.activoManual)+'">';
   } else {
-    var opts = ASSETS[op.categoria].map(function(a){return '<option value="'+esc(a)+'"'+(a===op.activo?' selected':'')+'>'+esc(a)+'</option>';}).join('') + '<option value="Otro activo"'+(op.activo==='Otro activo'?' selected':'')+'>Otro activo…</option>';
+    var opts = assetsForCategory(op.categoria).map(function(a){return '<option value="'+esc(a)+'"'+(a===op.activo?' selected':'')+'>'+esc(a)+'</option>';}).join('') + '<option value="Otro activo"'+(op.activo==='Otro activo'?' selected':'')+'>Otro activo…</option>';
     activoField = '<select id="f-activo">'+opts+'</select>';
     if (op.activo==='Otro activo') activoField += '<input id="f-activoManual" placeholder="Escribe el instrumento" value="'+esc(op.activoManual)+'" style="margin-top:8px">';
   }
@@ -1528,7 +1618,7 @@ function bindDiarioFormEvents(){
   bindVal('f-entrada','precioEntrada'); bindVal('f-sl','stopLoss'); bindVal('f-tp','takeProfit'); bindVal('f-rr','rr');
   bindVal('f-beneficio','beneficio'); bindVal('f-observaciones','observaciones'); bindVal('f-activoManual','activoManual');
   var cuentaSel = document.getElementById('f-cuenta'); if (cuentaSel) cuentaSel.addEventListener('change', function(){ op.cuenta = cuentaSel.value; });
-  var catSel = document.getElementById('f-categoria'); if (catSel) catSel.addEventListener('change', function(){ op.categoria=catSel.value; if(op.categoria!=='Otro') op.activo=ASSETS[op.categoria][0]; render(); });
+  var catSel = document.getElementById('f-categoria'); if (catSel) catSel.addEventListener('change', function(){ op.categoria=catSel.value; if(op.categoria!=='Otro') op.activo=(ASSETS[op.categoria]||[])[0]||''; render(); });
   var activoSel = document.getElementById('f-activo'); if (activoSel) activoSel.addEventListener('change', function(){ op.activo=activoSel.value; render(); });
   var dirSeg = document.getElementById('f-direccion'); if (dirSeg) dirSeg.querySelectorAll('button').forEach(function(b){b.addEventListener('click',function(){op.direccion=b.getAttribute('data-val');render();});});
   var tipoOpSeg = document.getElementById('f-tipoOperacion'); if (tipoOpSeg) tipoOpSeg.querySelectorAll('button').forEach(function(b){b.addEventListener('click',function(){op.tipoOperacion=b.getAttribute('data-val');render();});});
@@ -1714,6 +1804,40 @@ function renderEstadisticas(){
     return { tipo:tipo, count:ops.length, wins:wins, losses:losses, winRate: ops.length?(wins/ops.length*100):0, profit:profit, rrProm:rrProm };
   }).filter(function(r){return r.count>0;});
 
+  function resolveActivoStats(o){ return (o.activo==='Otro activo' ? o.activoManual : o.activo) || 'Sin especificar'; }
+  var porActivoMap = {};
+  scoped.forEach(function(o){
+    var key = resolveActivoStats(o);
+    (porActivoMap[key] = porActivoMap[key] || []).push(o);
+  });
+  var porActivo = Object.keys(porActivoMap).map(function(key){
+    var all = porActivoMap[key];
+    var ejec = opsEjecutadas(all);
+    var tp = ejec.filter(function(o){return o.resultado==='Ganada';}).length;
+    var sl = ejec.filter(function(o){return o.resultado==='Perdida';}).length;
+    var be = ejec.filter(function(o){return o.resultado==='Break Even';}).length;
+    var noAbierta = all.length - ejec.length;
+    var profit = all.reduce(function(s,o){return s+(parseFloat(o.beneficio)||0);},0);
+    var rrVals = ejec.map(function(o){return parseFloat(o.rr);}).filter(function(v){return !isNaN(v);});
+    var rrProm = rrVals.length ? rrVals.reduce(function(a,v){return a+v;},0)/rrVals.length : 0;
+    return {
+      activo:key, total: all.length, tp:tp, sl:sl, be:be, noAbierta:noAbierta,
+      winRate: ejec.length?(tp/ejec.length*100):0, profit:profit, rrProm:rrProm,
+      pro: ejec.filter(function(o){return o.tipoOperacion==='Pro-tendencia';}).length,
+      contra: ejec.filter(function(o){return o.tipoOperacion==='Contra-tendencia';}).length,
+      confirm: ejec.filter(function(o){return o.tipoEntrada==='Confirmación';}).length,
+      riesgo: ejec.filter(function(o){return o.tipoEntrada==='Riesgo';}).length
+    };
+  }).sort(function(a,b){ return b.profit - a.profit; });
+  var destacados = {
+    mejor: porActivo.length ? porActivo[0] : null,
+    peor: porActivo.length ? porActivo[porActivo.length-1] : null,
+    masWinRate: porActivo.length ? porActivo.slice().sort(function(a,b){return b.winRate-a.winRate;})[0] : null,
+    masOperaciones: porActivo.length ? porActivo.slice().sort(function(a,b){return b.total-a.total;})[0] : null,
+    masPerdidas: porActivo.length ? porActivo.slice().sort(function(a,b){return b.sl-a.sl;})[0] : null,
+    masBE: porActivo.length ? porActivo.slice().sort(function(a,b){return b.be-a.be;})[0] : null
+  };
+
   var chips = ['Todas'].concat(accNames).map(function(a){
     return '<button class="chip stats-chip ' + (state.statsScope===a?'active':'') + '" data-cuenta="'+esc(a)+'">'+esc(a)+'</button>';
   }).join('');
@@ -1746,6 +1870,34 @@ function renderEstadisticas(){
           + '<div style="font-size:11.5px;color:var(--textDim);margin-top:6px">'+r.count+' operaciones · '+r.wins+' ganadas · '+r.losses+' perdidas</div>'
           + '<div style="font-size:11.5px;color:var(--textDim);margin-top:2px">RR prom. '+r.rrProm.toFixed(2)+'R</div>'
           + '<div style="font-size:14px;font-weight:700;margin-top:6px;color:'+(r.profit>=0?'var(--green)':'var(--red)')+'">'+fmtNum(r.profit)+'</div>'
+          + '</div>';
+      }).join('')
+  + '</div></div>' : '')
+  + (porActivo.length ? '<div style="padding:22px 18px 0"><h3 style="font-size:15px;font-weight:700;margin-bottom:12px">Comparación entre activos</h3>'
+  +   '<div class="card" style="display:flex;flex-direction:column;gap:8px;font-size:12.5px">'
+  +     (destacados.mejor ? '<div>🥇 Mejor activo: <b>'+esc(destacados.mejor.activo)+'</b> <span style="color:'+(destacados.mejor.profit>=0?'var(--green)':'var(--red)')+'">('+fmtNum(destacados.mejor.profit)+')</span></div>' : '')
+  +     (destacados.peor && destacados.peor.activo !== (destacados.mejor?destacados.mejor.activo:null) ? '<div>🔴 Peor activo: <b>'+esc(destacados.peor.activo)+'</b> <span style="color:'+(destacados.peor.profit>=0?'var(--green)':'var(--red)')+'">('+fmtNum(destacados.peor.profit)+')</span></div>' : '')
+  +     (destacados.masWinRate ? '<div>🎯 Mayor win rate: <b>'+esc(destacados.masWinRate.activo)+'</b> ('+destacados.masWinRate.winRate.toFixed(0)+'%)</div>' : '')
+  +     (destacados.masOperaciones ? '<div>📊 Más operaciones: <b>'+esc(destacados.masOperaciones.activo)+'</b> ('+destacados.masOperaciones.total+')</div>' : '')
+  +     (destacados.masPerdidas && destacados.masPerdidas.sl>0 ? '<div>📉 Más pérdidas: <b>'+esc(destacados.masPerdidas.activo)+'</b> ('+destacados.masPerdidas.sl+' SL)</div>' : '')
+  +     (destacados.masBE && destacados.masBE.be>0 ? '<div>⚖️ Más BE: <b>'+esc(destacados.masBE.activo)+'</b> ('+destacados.masBE.be+')</div>' : '')
+  +   '</div></div>'
+  + '<div style="padding:14px 18px 0"><h3 style="font-size:15px;font-weight:700;margin-bottom:12px">Estadísticas por activo</h3>'
+  +   porActivo.map(function(r){
+        return '<div class="card" style="margin-bottom:10px">'
+          + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><span style="font-weight:700;font-size:14px">'+esc(r.activo)+'</span><span style="font-weight:700;font-size:13px;color:'+(r.profit>=0?'var(--green)':'var(--red)')+'">'+fmtNum(r.profit)+'</span></div>'
+          + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">'
+          +   '<span class="pill pill-default">Total '+r.total+'</span>'
+          +   '<span class="pill pill-green">TP '+r.tp+'</span>'
+          +   '<span class="pill pill-red">SL '+r.sl+'</span>'
+          +   '<span class="pill pill-default">BE '+r.be+'</span>'
+          +   (r.noAbierta>0 ? '<span class="pill pill-default">No abierta '+r.noAbierta+'</span>' : '')
+          + '</div>'
+          + '<div style="font-size:11.5px;color:var(--textDim);line-height:1.7">'
+          +   'Win rate: <b style="color:var(--text)">'+r.winRate.toFixed(0)+'%</b> · RR prom.: <b style="color:var(--text)">'+r.rrProm.toFixed(2)+'R</b><br>'
+          +   'Pro-tendencia: '+r.pro+' · Contra-tendencia: '+r.contra+'<br>'
+          +   'Entrada por Confirmación: '+r.confirm+' · Entrada por Riesgo: '+r.riesgo
+          + '</div>'
           + '</div>';
       }).join('')
   + '</div></div>' : '')
