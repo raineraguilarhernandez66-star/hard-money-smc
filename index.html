@@ -448,6 +448,7 @@ var MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','
 var MESES_CORTOS = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 var DIAS_SEMANA = ['L','M','X','J','V','S','D'];
 var ACCOUNT_TYPES = ['Demo','Real','Challenge / Fondeo'];
+var SESSIONS = ['Londres','Nueva York','Asia','Otra'];
 var CURRENCIES = ['USD','EUR','GBP','JPY','CHF','CAD','AUD','NZD','BRL','MXN','CNY','HKD','SGD','SEK','NOK','DKK','PLN','CZK','HUF','TRY','ZAR','AED','SAR','INR','KRW'];
 
 var state = {
@@ -505,6 +506,7 @@ function emptyOperation(cuenta){
     resultado: 'Ganada', beneficio: '',
     tipoEntrada: 'Riesgo', checklist: {}, observaciones: '',
     tipoOperacion: '',
+    sesion: '', sesionManual: '',
     imagenesAntes: [], imagenesDurante: [], imagenesResultado: [], noticias: [], createdAt: Date.now()
   };
 }
@@ -1471,6 +1473,7 @@ function renderDiarioForm(){
   +     '<div class="field"><label class="label">Activo</label>'+activoField+'</div>'
   +     '<div class="field"><label class="label">Dirección</label><div class="seg" id="f-direccion"><button data-val="Compra" class="'+(op.direccion==='Compra'?'active':'')+'">Compra</button><button data-val="Venta" class="'+(op.direccion==='Venta'?'active':'')+'">Venta</button></div></div>'
   +     '<div class="field"><label class="label">Tipo de operación</label><div class="seg" id="f-tipoOperacion"><button data-val="Pro-tendencia" class="'+((op.tipoOperacion||'')==='Pro-tendencia'?'active':'')+'">Pro-tendencia</button><button data-val="Contra-tendencia" class="'+((op.tipoOperacion||'')==='Contra-tendencia'?'active':'')+'">Contra-tendencia</button><button data-val="" class="'+((op.tipoOperacion||'')===''?'active':'')+'" style="flex:0 0 auto;padding:0 12px">—</button></div></div>'
+  +     '<div class="field"><label class="label">Sesión de entrada</label><select id="f-sesion"><option value=""'+((op.sesion||'')===''?' selected':'')+'>Sin especificar</option>'+SESSIONS.map(function(s){return '<option value="'+esc(s)+'"'+(op.sesion===s?' selected':'')+'>'+esc(s)+'</option>';}).join('')+'</select>'+(op.sesion==='Otra'?'<input id="f-sesionManual" placeholder="Escribe la sesión" value="'+esc(op.sesionManual||'')+'" style="margin-top:8px">':'')+'</div>'
   +     '<div class="row2 field"><div><label class="label">Lotaje</label><input inputmode="decimal" id="f-lotaje" value="'+esc(op.lotaje)+'" placeholder="0.10"></div><div><label class="label">Riesgo %</label><input inputmode="decimal" id="f-riesgo" value="'+esc(op.riesgo)+'" placeholder="1"></div></div>'
   +     '<div class="row2 field"><div><label class="label">Entrada</label><input inputmode="decimal" id="f-entrada" value="'+esc(op.precioEntrada)+'"></div><div><label class="label">Stop Loss</label><input inputmode="decimal" id="f-sl" value="'+esc(op.stopLoss)+'"></div></div>'
   +     '<div class="row2 field"><div><label class="label">Take Profit</label><input inputmode="decimal" id="f-tp" value="'+esc(op.takeProfit)+'"></div><div><label class="label">RR</label><input inputmode="decimal" id="f-rr" value="'+esc(op.rr)+'" style="color:var(--gold);font-weight:700"></div></div>'
@@ -1622,6 +1625,8 @@ function bindDiarioFormEvents(){
   var activoSel = document.getElementById('f-activo'); if (activoSel) activoSel.addEventListener('change', function(){ op.activo=activoSel.value; render(); });
   var dirSeg = document.getElementById('f-direccion'); if (dirSeg) dirSeg.querySelectorAll('button').forEach(function(b){b.addEventListener('click',function(){op.direccion=b.getAttribute('data-val');render();});});
   var tipoOpSeg = document.getElementById('f-tipoOperacion'); if (tipoOpSeg) tipoOpSeg.querySelectorAll('button').forEach(function(b){b.addEventListener('click',function(){op.tipoOperacion=b.getAttribute('data-val');render();});});
+  var sesionSel = document.getElementById('f-sesion'); if (sesionSel) sesionSel.addEventListener('change', function(){ op.sesion = sesionSel.value; if (op.sesion !== 'Otra') op.sesionManual = ''; render(); });
+  var sesionManualInp = document.getElementById('f-sesionManual'); if (sesionManualInp) sesionManualInp.addEventListener('input', function(){ op.sesionManual = sesionManualInp.value; });
   var resSeg = document.getElementById('f-resultado'); if (resSeg) resSeg.querySelectorAll('button').forEach(function(b){b.addEventListener('click',function(){op.resultado=b.getAttribute('data-val');render();});});
   var tipoSeg = document.getElementById('f-tipoEntrada'); if (tipoSeg) tipoSeg.querySelectorAll('button').forEach(function(b){b.addEventListener('click',function(){op.tipoEntrada=b.getAttribute('data-val');op.checklist={};render();});});
   document.querySelectorAll('.chk-btn').forEach(function(b){b.addEventListener('click',function(){op.checklist[b.getAttribute('data-q')]=b.getAttribute('data-val')==='true';render();});});
@@ -1838,6 +1843,44 @@ function renderEstadisticas(){
     masBE: porActivo.length ? porActivo.slice().sort(function(a,b){return b.be-a.be;})[0] : null
   };
 
+  function resolveSesionStats(o){ return o.sesion ? (o.sesion==='Otra' ? (o.sesionManual||'Otra') : o.sesion) : ''; }
+  var porSesionMap = {};
+  scoped.forEach(function(o){
+    var key = resolveSesionStats(o) || 'Sin sesión registrada';
+    (porSesionMap[key] = porSesionMap[key] || []).push(o);
+  });
+  var porSesion = Object.keys(porSesionMap).map(function(key){
+    var all = porSesionMap[key];
+    var ejec = opsEjecutadas(all);
+    var tp = ejec.filter(function(o){return o.resultado==='Ganada';}).length;
+    var sl = ejec.filter(function(o){return o.resultado==='Perdida';}).length;
+    var be = ejec.filter(function(o){return o.resultado==='Break Even';}).length;
+    var noAbierta = all.length - ejec.length;
+    var profit = all.reduce(function(s,o){return s+(parseFloat(o.beneficio)||0);},0);
+    var proOps = ejec.filter(function(o){return o.tipoOperacion==='Pro-tendencia';});
+    var contraOps = ejec.filter(function(o){return o.tipoOperacion==='Contra-tendencia';});
+    function resumen(ops){
+      return { count: ops.length, tp: ops.filter(function(o){return o.resultado==='Ganada';}).length, sl: ops.filter(function(o){return o.resultado==='Perdida';}).length, be: ops.filter(function(o){return o.resultado==='Break Even';}).length };
+    }
+    return {
+      sesion:key, total: all.length, tp:tp, sl:sl, be:be, noAbierta:noAbierta,
+      winRate: ejec.length?(tp/ejec.length*100):0, profit:profit,
+      confirm: ejec.filter(function(o){return o.tipoEntrada==='Confirmación';}).length,
+      riesgo: ejec.filter(function(o){return o.tipoEntrada==='Riesgo';}).length,
+      pro: resumen(proOps), contra: resumen(contraOps)
+    };
+  }).sort(function(a,b){
+    if (a.sesion==='Sin sesión registrada') return 1;
+    if (b.sesion==='Sin sesión registrada') return -1;
+    return b.profit - a.profit;
+  });
+  var sesionesConDatos = porSesion.filter(function(s){ return s.sesion !== 'Sin sesión registrada'; });
+  var destacadosSesion = {
+    mejor: sesionesConDatos.length ? sesionesConDatos.slice().sort(function(a,b){return b.winRate-a.winRate;})[0] : null,
+    peor: sesionesConDatos.length ? sesionesConDatos.slice().sort(function(a,b){return a.winRate-b.winRate;})[0] : null,
+    masPerdidas: sesionesConDatos.length ? sesionesConDatos.slice().sort(function(a,b){return b.sl-a.sl;})[0] : null
+  };
+
   var chips = ['Todas'].concat(accNames).map(function(a){
     return '<button class="chip stats-chip ' + (state.statsScope===a?'active':'') + '" data-cuenta="'+esc(a)+'">'+esc(a)+'</button>';
   }).join('');
@@ -1901,6 +1944,31 @@ function renderEstadisticas(){
           + '</div>';
       }).join('')
   + '</div></div>' : '')
+  + (porSesion.length ? '<div style="padding:22px 18px 0"><h3 style="font-size:15px;font-weight:700;margin-bottom:12px">Estadísticas por sesión</h3>'
+  +   (sesionesConDatos.length ? '<div class="card" style="margin-bottom:14px;display:flex;flex-direction:column;gap:8px;font-size:12.5px">'
+  +     (destacadosSesion.mejor ? '<div>🥇 Mejor sesión: <b>'+esc(destacadosSesion.mejor.sesion)+'</b> (win rate '+destacadosSesion.mejor.winRate.toFixed(0)+'%)</div>' : '')
+  +     (destacadosSesion.peor && destacadosSesion.peor.sesion !== (destacadosSesion.mejor?destacadosSesion.mejor.sesion:null) ? '<div>🔴 Peor sesión: <b>'+esc(destacadosSesion.peor.sesion)+'</b> (win rate '+destacadosSesion.peor.winRate.toFixed(0)+'%)</div>' : '')
+  +     (destacadosSesion.masPerdidas && destacadosSesion.masPerdidas.sl>0 ? '<div>📉 Sesión con más pérdidas: <b>'+esc(destacadosSesion.masPerdidas.sesion)+'</b> ('+destacadosSesion.masPerdidas.sl+' SL)</div>' : '')
+  +   '</div>' : '')
+  +   porSesion.map(function(r){
+        return '<div class="card" style="margin-bottom:10px">'
+          + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><span style="font-weight:700;font-size:14px">'+esc(r.sesion)+'</span><span style="font-weight:700;font-size:13px;color:'+(r.profit>=0?'var(--green)':'var(--red)')+'">'+fmtNum(r.profit)+'</span></div>'
+          + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">'
+          +   '<span class="pill pill-default">Total '+r.total+'</span>'
+          +   '<span class="pill pill-green">TP '+r.tp+'</span>'
+          +   '<span class="pill pill-red">SL '+r.sl+'</span>'
+          +   '<span class="pill pill-default">BE '+r.be+'</span>'
+          +   (r.noAbierta>0 ? '<span class="pill pill-default">No abierta '+r.noAbierta+'</span>' : '')
+          + '</div>'
+          + '<div style="font-size:11.5px;color:var(--textDim);line-height:1.7">'
+          +   'Win rate: <b style="color:var(--text)">'+r.winRate.toFixed(0)+'%</b><br>'
+          +   'Entrada por Confirmación: '+r.confirm+' · Entrada por Riesgo: '+r.riesgo
+          +   (r.pro.count>0 ? '<br>Pro-tendencia: '+r.pro.count+' op. ('+r.pro.tp+' TP · '+r.pro.sl+' SL · '+r.pro.be+' BE)' : '')
+          +   (r.contra.count>0 ? '<br>Contra-tendencia: '+r.contra.count+' op. ('+r.contra.tp+' TP · '+r.contra.sl+' SL · '+r.contra.be+' BE)' : '')
+          + '</div>'
+          + '</div>';
+      }).join('')
+  + '</div>' : '')
   + (porCuenta.length ? '<div style="padding:22px 18px 0"><h3 style="font-size:15px;font-weight:700;margin-bottom:12px">Operaciones por cuenta</h3><div class="card" style="display:flex;flex-direction:column;gap:12px">'
   +   porCuenta.map(function(r){
         return '<div><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px"><span style="font-size:13px;font-weight:600">'+esc(r.account.name)+'</span><span style="font-size:12px;color:'+(r.profit>=0?'var(--green)':'var(--red)')+';font-weight:700">'+fmtMoney(r.profit,r.account.currency)+'</span></div>'
