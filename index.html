@@ -513,6 +513,20 @@ function emptyOperation(cuenta){
 function accountOps(name){ return state.operations.filter(function(o){ return o.cuenta === name; }); }
 function opsEjecutadas(ops){ return ops.filter(function(o){ return o.resultado !== 'No Abierta'; }); }
 
+/* ---- Cumplimiento de reglas dentro del registro de operaciones (usa Mis reglas tal cual están) ---- */
+function rulesForTipo(tipo){ return state.rules.filter(function(r){ return r.categoria === tipo && r.activa; }); }
+function buildReglasEval(tipo){
+  return { tipo: tipo, items: rulesForTipo(tipo).map(function(r){ return { id: r.id, texto: r.texto, cumplida: null }; }) };
+}
+function reglasEvalResumen(reglasEval){
+  if (!reglasEval || !reglasEval.items) return null;
+  var decididas = reglasEval.items.filter(function(i){ return i.cumplida === true || i.cumplida === false; });
+  var cumplidas = reglasEval.items.filter(function(i){ return i.cumplida === true; }).length;
+  var noCumplidas = reglasEval.items.filter(function(i){ return i.cumplida === false; }).length;
+  var pct = decididas.length ? (cumplidas / decididas.length * 100) : null;
+  return { total: reglasEval.items.length, decididas: decididas.length, cumplidas: cumplidas, noCumplidas: noCumplidas, pct: pct };
+}
+
 /* ================= SMC study helpers ================= */
 function emptyChecklistAnswers(template){
   var o = {}; template.forEach(function(q){ o[q.id] = q.type==='boolean' ? null : ''; }); return o;
@@ -1480,6 +1494,7 @@ function renderDiarioForm(){
   +     '<div class="field"><label class="label">Resultado</label><div class="seg" id="f-resultado"><button data-val="Ganada" class="'+(op.resultado==='Ganada'?'active':'')+'">Ganada</button><button data-val="Perdida" class="'+(op.resultado==='Perdida'?'active':'')+'">Perdida</button><button data-val="Break Even" class="'+(op.resultado==='Break Even'?'active':'')+'">BE</button><button data-val="No Abierta" class="'+(op.resultado==='No Abierta'?'active':'')+'">No Abierta</button></div></div>'
   +     '<div class="field"><label class="label">Beneficio / Pérdida</label><input type="text" inputmode="text" pattern="[+-]?[0-9]*\.?[0-9]*" id="f-beneficio" value="'+esc(op.beneficio)+'" placeholder="Ej. +500 o -200" style="color:'+(parseFloat(op.beneficio)<0?'var(--red)':'var(--green)')+';font-weight:700"></div>'
   +   '</div>'
+  +   renderReglasEvalCard(op)
   +   renderCapturasCard(op)
   +   renderNoticiasCard(op)
   +   '<div class="card"><div class="label" style="margin-bottom:12px">Tipo de entrada</div>'
@@ -1491,6 +1506,44 @@ function renderDiarioForm(){
   + '<div style="position:fixed;left:0;right:0;bottom:0;max-width:460px;margin:0 auto;background:rgba(10,10,13,0.96);border-top:1px solid var(--border);padding:12px 18px calc(env(safe-area-inset-bottom,0px) + 12px);z-index:60">'
   +   '<button class="btn btn-primary" id="save-op-btn" style="width:100%">'+icon('check')+' Guardar operación</button>'
   + '</div>';
+}
+function renderReglasEvalCard(op){
+  if (op.tipoOperacion !== 'Pro-tendencia' && op.tipoOperacion !== 'Contra-tendencia') return '';
+  if (!op.reglasEval || op.reglasEval.tipo !== op.tipoOperacion) {
+    return '<div class="card"><div class="label" style="margin-bottom:10px">Cumplimiento de reglas</div>'
+      + '<div style="font-size:12.5px;color:var(--textFaint);margin-bottom:12px">Sin evaluación de reglas para esta operación.</div>'
+      + '<button class="btn btn-ghost" id="reglaseval-start-btn" style="width:100%;justify-content:center">' + icon('listcheck') + ' Evaluar reglas de ' + esc(op.tipoOperacion) + '</button>'
+      + '</div>';
+  }
+  var resumen = reglasEvalResumen(op.reglasEval);
+  var itemsHtml = op.reglasEval.items.length === 0
+    ? '<div style="font-size:12.5px;color:var(--textFaint)">No hay reglas activas de "' + esc(op.tipoOperacion) + '" en Mis reglas todavía.</div>'
+    : op.reglasEval.items.map(function(it, idx){
+        return '<div class="checklist-item" style="align-items:flex-start"><span style="flex:1;font-size:13px;line-height:1.5">' + esc(it.texto) + '</span>'
+          + '<div style="display:flex;gap:5px;flex-shrink:0">'
+          +   '<button class="yn-btn reglaeval-btn ' + (it.cumplida===true?'yes-active':'') + '" data-idx="' + idx + '" data-val="true">✅</button>'
+          +   '<button class="yn-btn reglaeval-btn ' + (it.cumplida===false?'no-active':'') + '" data-idx="' + idx + '" data-val="false">❌</button>'
+          + '</div></div>';
+      }).join('');
+  var pctHtml = (resumen && resumen.pct !== null)
+    ? '<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);font-size:13px;font-weight:700">Cumplimiento de reglas: ' + resumen.cumplidas + '/' + resumen.decididas + (resumen.decididas!==resumen.total?' (de '+resumen.total+' en total)':'') + ' — <span style="color:var(--gold)">' + resumen.pct.toFixed(1) + '%</span></div>'
+    : '';
+  return '<div class="card"><div class="label" style="margin-bottom:10px">Cumplimiento de reglas · ' + esc(op.tipoOperacion) + '</div>'
+    + itemsHtml + pctHtml
+    + '</div>';
+}
+function bindReglasEvalCard(op){
+  var startBtn = document.getElementById('reglaseval-start-btn');
+  if (startBtn) startBtn.addEventListener('click', function(){ op.reglasEval = buildReglasEval(op.tipoOperacion); render(); });
+  document.querySelectorAll('.reglaeval-btn').forEach(function(b){
+    b.addEventListener('click', function(){
+      var idx = parseInt(b.getAttribute('data-idx'), 10);
+      var val = b.getAttribute('data-val') === 'true';
+      var item = op.reglasEval.items[idx];
+      item.cumplida = (item.cumplida === val) ? null : val;
+      render();
+    });
+  });
 }
 function renderCapturasCard(op){
   function slot(field, label){
@@ -1606,6 +1659,7 @@ function bindNoticiasEvents(){
 
 function bindDiarioFormEvents(){
   var op = state.editingOp;
+  bindReglasEvalCard(op);
   bindCapturasEvents();
   bindNoticiasEvents();
   autoExpandTextarea(document.getElementById('f-observaciones'));
@@ -1624,7 +1678,13 @@ function bindDiarioFormEvents(){
   var catSel = document.getElementById('f-categoria'); if (catSel) catSel.addEventListener('change', function(){ op.categoria=catSel.value; if(op.categoria!=='Otro') op.activo=(ASSETS[op.categoria]||[])[0]||''; render(); });
   var activoSel = document.getElementById('f-activo'); if (activoSel) activoSel.addEventListener('change', function(){ op.activo=activoSel.value; render(); });
   var dirSeg = document.getElementById('f-direccion'); if (dirSeg) dirSeg.querySelectorAll('button').forEach(function(b){b.addEventListener('click',function(){op.direccion=b.getAttribute('data-val');render();});});
-  var tipoOpSeg = document.getElementById('f-tipoOperacion'); if (tipoOpSeg) tipoOpSeg.querySelectorAll('button').forEach(function(b){b.addEventListener('click',function(){op.tipoOperacion=b.getAttribute('data-val');render();});});
+  var tipoOpSeg = document.getElementById('f-tipoOperacion'); if (tipoOpSeg) tipoOpSeg.querySelectorAll('button').forEach(function(b){b.addEventListener('click',function(){
+    op.tipoOperacion=b.getAttribute('data-val');
+    if (op.tipoOperacion==='Pro-tendencia' || op.tipoOperacion==='Contra-tendencia') {
+      if (!op.reglasEval || op.reglasEval.tipo !== op.tipoOperacion) op.reglasEval = buildReglasEval(op.tipoOperacion);
+    }
+    render();
+  });});
   var sesionSel = document.getElementById('f-sesion'); if (sesionSel) sesionSel.addEventListener('change', function(){ op.sesion = sesionSel.value; if (op.sesion !== 'Otra') op.sesionManual = ''; render(); });
   var sesionManualInp = document.getElementById('f-sesionManual'); if (sesionManualInp) sesionManualInp.addEventListener('input', function(){ op.sesionManual = sesionManualInp.value; });
   var resSeg = document.getElementById('f-resultado'); if (resSeg) resSeg.querySelectorAll('button').forEach(function(b){b.addEventListener('click',function(){op.resultado=b.getAttribute('data-val');render();});});
@@ -1881,6 +1941,48 @@ function renderEstadisticas(){
     masPerdidas: sesionesConDatos.length ? sesionesConDatos.slice().sort(function(a,b){return b.sl-a.sl;})[0] : null
   };
 
+  var opsConReglas = scoped.filter(function(o){ return o.reglasEval && o.reglasEval.items && o.reglasEval.items.some(function(i){ return i.cumplida===true || i.cumplida===false; }); });
+  var reglasStats = ['Pro-tendencia','Contra-tendencia'].map(function(tipo){
+    var ops = opsConReglas.filter(function(o){ return o.reglasEval.tipo === tipo; });
+    var porRegla = {};
+    ops.forEach(function(o){
+      o.reglasEval.items.forEach(function(it){
+        if (it.cumplida !== true && it.cumplida !== false) return;
+        porRegla[it.id] = porRegla[it.id] || { texto: it.texto, cumplida: 0, noCumplida: 0 };
+        porRegla[it.id].texto = it.texto;
+        if (it.cumplida) porRegla[it.id].cumplida++; else porRegla[it.id].noCumplida++;
+      });
+    });
+    var reglasList = Object.keys(porRegla).map(function(id){
+      var r = porRegla[id]; var total = r.cumplida + r.noCumplida;
+      return { texto: r.texto, cumplida: r.cumplida, noCumplida: r.noCumplida, pct: total ? (r.cumplida/total*100) : 0 };
+    });
+    var totalDecididas = reglasList.reduce(function(s,r){return s+r.cumplida+r.noCumplida;},0);
+    var totalCumplidas = reglasList.reduce(function(s,r){return s+r.cumplida;},0);
+    var promedio = totalDecididas ? (totalCumplidas/totalDecididas*100) : null;
+    return { tipo: tipo, ops: ops.length, reglas: reglasList, promedio: promedio };
+  }).filter(function(r){ return r.ops > 0; });
+  var todasLasReglas = [].concat.apply([], reglasStats.map(function(r){ return r.reglas; }));
+  var reglaMasCumples = todasLasReglas.length ? todasLasReglas.slice().sort(function(a,b){return b.pct-a.pct;})[0] : null;
+  var reglaMasIncumples = todasLasReglas.length ? todasLasReglas.slice().sort(function(a,b){return a.pct-b.pct;})[0] : null;
+  var cumplimientoGeneral = (function(){
+    var totalD = reglasStats.reduce(function(s,r){ return s + r.reglas.reduce(function(a,x){return a+x.cumplida+x.noCumplida;},0); },0);
+    var totalC = reglasStats.reduce(function(s,r){ return s + r.reglas.reduce(function(a,x){return a+x.cumplida;},0); },0);
+    return totalD ? (totalC/totalD*100) : null;
+  })();
+  var buckets = [
+    { label:'90–100% de reglas cumplidas', test: function(p){ return p>=90; } },
+    { label:'50–89% de reglas cumplidas', test: function(p){ return p>=50 && p<90; } },
+    { label:'Menos del 50% de reglas cumplidas', test: function(p){ return p<50; } }
+  ].map(function(b){
+    var ops = opsConReglas.filter(function(o){ var r = reglasEvalResumen(o.reglasEval); return r && r.pct !== null && b.test(r.pct); });
+    var ejec = opsEjecutadas(ops);
+    var tp = ejec.filter(function(o){return o.resultado==='Ganada';}).length;
+    var sl = ejec.filter(function(o){return o.resultado==='Perdida';}).length;
+    var be = ejec.filter(function(o){return o.resultado==='Break Even';}).length;
+    return { label:b.label, total: ops.length, tp:tp, sl:sl, be:be, winRate: ejec.length?(tp/ejec.length*100):0 };
+  }).filter(function(b){ return b.total>0; });
+
   var chips = ['Todas'].concat(accNames).map(function(a){
     return '<button class="chip stats-chip ' + (state.statsScope===a?'active':'') + '" data-cuenta="'+esc(a)+'">'+esc(a)+'</button>';
   }).join('');
@@ -1968,6 +2070,31 @@ function renderEstadisticas(){
           + '</div>'
           + '</div>';
       }).join('')
+  + '</div>' : '')
+  + (reglasStats.length ? '<div style="padding:22px 18px 0"><h3 style="font-size:15px;font-weight:700;margin-bottom:12px">Cumplimiento de reglas</h3>'
+  +   '<div class="card" style="margin-bottom:14px;display:flex;flex-direction:column;gap:8px;font-size:12.5px">'
+  +     (cumplimientoGeneral!==null ? '<div>Cumplimiento promedio: <b style="color:var(--gold)">'+cumplimientoGeneral.toFixed(0)+'%</b></div>' : '')
+  +     reglasStats.map(function(r){ return r.promedio!==null ? '<div>'+esc(r.tipo)+': <b style="color:var(--text)">'+r.promedio.toFixed(0)+'%</b></div>' : ''; }).join('')
+  +     (reglaMasCumples ? '<div>🟢 Regla que más cumples: '+esc(reglaMasCumples.texto)+' — '+reglaMasCumples.pct.toFixed(0)+'% de cumplimiento</div>' : '')
+  +     (reglaMasIncumples && reglaMasIncumples.texto !== (reglaMasCumples?reglaMasCumples.texto:null) ? '<div>🔴 Regla que más incumples: '+esc(reglaMasIncumples.texto)+' — '+reglaMasIncumples.pct.toFixed(0)+'% de cumplimiento</div>' : '')
+  +   '</div>'
+  +   reglasStats.map(function(r){
+        return '<div class="card" style="margin-bottom:10px">'
+          + '<div style="font-weight:700;font-size:14px;margin-bottom:8px">'+esc(r.tipo)+' <span style="font-weight:400;color:var(--textDim);font-size:11.5px">('+r.ops+' operaciones evaluadas)</span></div>'
+          + r.reglas.map(function(x){
+              return '<div style="margin-bottom:8px"><div style="display:flex;align-items:center;justify-content:space-between;font-size:12px"><span style="flex:1;padding-right:8px">'+esc(x.texto)+'</span><span style="font-weight:700;color:'+(x.pct>=70?'var(--green)':x.pct>=40?'var(--gold)':'var(--red)')+'">'+x.pct.toFixed(0)+'%</span></div>'
+                + '<div style="font-size:10.5px;color:var(--textFaint)">Cumplida: '+x.cumplida+' · No cumplida: '+x.noCumplida+'</div></div>';
+            }).join('')
+          + '</div>';
+      }).join('')
+  +   (buckets.length ? '<div style="margin-top:4px"><h3 style="font-size:13.5px;font-weight:700;margin-bottom:10px;color:var(--textDim)">Cumplimiento vs. resultado</h3>'
+  +     buckets.map(function(b){
+          return '<div class="card" style="margin-bottom:10px">'
+            + '<div style="font-weight:700;font-size:13px;margin-bottom:6px">'+esc(b.label)+'</div>'
+            + '<div style="font-size:11.5px;color:var(--textDim)">Total: '+b.total+' · TP: '+b.tp+' · SL: '+b.sl+' · BE: '+b.be+' · Win rate: <b style="color:var(--text)">'+b.winRate.toFixed(1)+'%</b></div>'
+            + '</div>';
+        }).join('')
+  +   '</div>' : '')
   + '</div>' : '')
   + (porCuenta.length ? '<div style="padding:22px 18px 0"><h3 style="font-size:15px;font-weight:700;margin-bottom:12px">Operaciones por cuenta</h3><div class="card" style="display:flex;flex-direction:column;gap:12px">'
   +   porCuenta.map(function(r){
@@ -2485,6 +2612,8 @@ supabaseClient.from('accounts').select('id').limit(1).then(function(res){
       resultado: op.resultado, beneficio: numOrNull(op.beneficio), tipo_entrada: op.tipoEntrada,
       checklist: op.checklist || {}, observaciones: op.observaciones, noticias: op.noticias || [],
       tipo_operacion: op.tipoOperacion || null,
+      sesion: op.sesion || null, sesion_manual: op.sesionManual || null,
+      reglas_eval: op.reglasEval || null,
       local_created_at: op.createdAt || null
     };
   }
@@ -2691,6 +2820,8 @@ supabaseClient.from('accounts').select('id').limit(1).then(function(res){
           resultado: o.resultado, beneficio: o.beneficio, tipoEntrada: o.tipo_entrada,
           checklist: o.checklist || {}, observaciones: o.observaciones, noticias: o.noticias || [],
           tipoOperacion: o.tipo_operacion || '',
+          sesion: o.sesion || '', sesionManual: o.sesion_manual || '',
+          reglasEval: o.reglas_eval || null,
           imagenesAntes: slots.antes.map(function(i){ return i.id; }),
           imagenesDurante: slots.durante.map(function(i){ return i.id; }),
           imagenesResultado: slots.resultado.map(function(i){ return i.id; }),
