@@ -459,6 +459,7 @@ var state = {
   editingOp: null,
   filterCuenta: 'Todas',
   statsScope: 'Todas',
+  evolPeriodo: 'todo',
   calScope: 'Todas',
   calCursor: (function(){ var d = new Date(); d.setDate(1); return d; })(),
   movements: [], goal: null, goalHistory: [],
@@ -525,6 +526,170 @@ function reglasEvalResumen(reglasEval){
   var noCumplidas = reglasEval.items.filter(function(i){ return i.cumplida === false; }).length;
   var pct = decididas.length ? (cumplidas / decididas.length * 100) : null;
   return { total: reglasEval.items.length, decididas: decididas.length, cumplidas: cumplidas, noCumplidas: noCumplidas, pct: pct };
+}
+
+/* ================= EVOLUCIÓN DEL TRADER (100% con datos reales existentes) ================= */
+function winRateOf(ops){
+  var e = opsEjecutadas(ops);
+  return e.length ? (e.filter(function(o){return o.resultado==='Ganada';}).length/e.length*100) : null;
+}
+function cumplimientoOf(ops){
+  var total=0, cump=0;
+  ops.forEach(function(o){ if (o.reglasEval && o.reglasEval.items) o.reglasEval.items.forEach(function(i){ if (i.cumplida===true||i.cumplida===false){ total++; if (i.cumplida) cump++; } }); });
+  return total ? (cump/total*100) : null;
+}
+function opsEnRango(ops, desdeMs, hastaMs){
+  return ops.filter(function(o){ var t = new Date(o.fecha+'T'+(o.hora||'00:00')).getTime(); return t>desdeMs && t<=hastaMs; });
+}
+function evolPeriodoDias(){ return state.evolPeriodo==='todo' ? null : parseInt(state.evolPeriodo,10); }
+function evolMetricas(ops){
+  var ejec = opsEjecutadas(ops);
+  var resultados = winRateOf(ops);
+  var ejecucion = ops.length ? (ejec.length/ops.length*100) : null;
+  var opsConTipo = ops.filter(function(o){ return o.tipoOperacion==='Pro-tendencia' || o.tipoOperacion==='Contra-tendencia'; });
+  var opsEvaluadas = opsConTipo.filter(function(o){ return o.reglasEval && o.reglasEval.items && o.reglasEval.items.some(function(i){ return i.cumplida===true||i.cumplida===false; }); });
+  var disciplina = opsConTipo.length ? (opsEvaluadas.length/opsConTipo.length*100) : null;
+  var cumplimiento = cumplimientoOf(opsEvaluadas);
+  var buckets = evolSplitBuckets(ejec, 4).map(winRateOf).filter(function(v){ return v!==null; });
+  var consistencia = null;
+  if (buckets.length >= 2) {
+    var media = buckets.reduce(function(a,v){return a+v;},0)/buckets.length;
+    var varianza = buckets.reduce(function(a,v){return a+Math.pow(v-media,2);},0)/buckets.length;
+    consistencia = Math.max(0, 100-Math.sqrt(varianza));
+  }
+  return { resultados:resultados, ejecucion:ejecucion, disciplina:disciplina, cumplimiento:cumplimiento, consistencia:consistencia, totalOps:ops.length, ejecOps:ejec.length };
+}
+function evolSplitBuckets(ops, n){
+  var sorted = ops.slice().sort(function(a,b){ return new Date(a.fecha)-new Date(b.fecha); });
+  if (!sorted.length) return [];
+  var minT = new Date(sorted[0].fecha).getTime(), maxT = new Date(sorted[sorted.length-1].fecha).getTime();
+  if (maxT===minT) return [sorted];
+  var span = (maxT-minT)/n, buckets=[];
+  for (var i=0;i<n;i++){
+    var lo = minT+i*span, hi = i===n-1 ? maxT+1 : minT+(i+1)*span;
+    var b = sorted.filter(function(o){ var t=new Date(o.fecha).getTime(); return t>=lo && t<hi; });
+    if (b.length) buckets.push(b);
+  }
+  return buckets;
+}
+function evolProgreso(metricas){
+  var vals = [metricas.disciplina, metricas.cumplimiento, metricas.ejecucion, metricas.consistencia, metricas.resultados].filter(function(v){ return v!==null; });
+  return vals.length ? (vals.reduce(function(a,v){return a+v;},0)/vals.length) : null;
+}
+function evolNivel(pct){
+  if (pct>=100) return '🎯 Dominio';
+  if (pct>=81) return '🏆 Avanzado';
+  if (pct>=61) return '📈 Consolidando';
+  if (pct>=41) return '🔨 En desarrollo';
+  if (pct>=21) return '📚 Aprendiendo';
+  return '🌱 Inicio';
+}
+function renderEvolucionTrader(scoped){
+  var dias = evolPeriodoDias();
+  var hoy = new Date(todayISO()+'T23:59:59').getTime();
+  var actualOps = dias===null ? scoped : opsEnRango(scoped, hoy-dias*86400000, hoy);
+  var anteriorOps = dias===null ? null : opsEnRango(scoped, hoy-2*dias*86400000, hoy-dias*86400000);
+
+  var periodChips = [['7','Últimos 7 días'],['30','Últimos 30 días'],['90','Últimos 90 días'],['todo','Todo el historial']].map(function(p){
+    return '<button class="chip evol-period-chip ' + (state.evolPeriodo===p[0]?'active':'') + '" data-periodo="'+p[0]+'">'+p[1]+'</button>';
+  }).join('');
+
+  if (actualOps.length === 0) {
+    return '<div style="padding:22px 18px 0"><h3 style="font-size:15px;font-weight:700;margin-bottom:12px">📈 Evolución del trader</h3>'
+      + '<div style="display:flex;gap:8px;padding:0 0 14px;overflow-x:auto">'+periodChips+'</div>'
+      + '<div class="empty">Sin operaciones en este período todavía.</div></div>';
+  }
+
+  var m = evolMetricas(actualOps);
+  var progreso = evolProgreso(m);
+  var mAnterior = anteriorOps && anteriorOps.length ? evolMetricas(anteriorOps) : null;
+  var progresoAnterior = mAnterior ? evolProgreso(mAnterior) : null;
+
+  var barraHtml = progreso===null ? '<div class="empty">Todavía no hay suficientes datos para calcular un progreso (evaluá reglas en tus operaciones de Pro/Contra-tendencia para desbloquear más métricas).</div>' : (
+    '<div class="progressbar-track"><div class="progressbar-fill" style="width:'+progreso+'%"></div></div>'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:2px">'
+    +   '<span style="font-size:22px;font-weight:800;color:var(--gold)">'+progreso.toFixed(0)+'%</span>'
+    +   '<span class="pill pill-gold">'+evolNivel(progreso)+'</span>'
+    + '</div>'
+  );
+
+  function filaMetrica(icono, nombre, val, valAnterior){
+    if (val===null) return '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;font-size:12.5px;color:var(--textFaint)">'+icono+' '+nombre+'<span>Sin datos suficientes</span></div>';
+    var comp = '';
+    if (valAnterior!==null && valAnterior!==undefined) {
+      var diff = val-valAnterior;
+      comp = ' <span style="font-size:11px;color:'+(diff>=0?'var(--green)':'var(--red)')+'">('+(diff>=0?'📈 +':'📉 ')+diff.toFixed(0)+' pp)</span>';
+    }
+    return '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;font-size:12.5px">'
+      + '<span>'+icono+' '+nombre+'</span><span style="font-weight:700">'+val.toFixed(0)+'%'+comp+'</span></div>';
+  }
+
+  var desgloseHtml = '<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">'
+    + filaMetrica('🧠','Disciplina', m.disciplina, mAnterior?mAnterior.disciplina:null)
+    + filaMetrica('📋','Cumplimiento de reglas', m.cumplimiento, mAnterior?mAnterior.cumplimiento:null)
+    + filaMetrica('🎯','Ejecución', m.ejecucion, mAnterior?mAnterior.ejecucion:null)
+    + filaMetrica('📊','Consistencia', m.consistencia, mAnterior?mAnterior.consistencia:null)
+    + filaMetrica('💰','Resultados (win rate)', m.resultados, mAnterior?mAnterior.resultados:null)
+    + '</div>';
+
+  var wrBuckets = evolSplitBuckets(opsEjecutadas(actualOps), 4).map(function(b,i){ return { i:i+1, wr: winRateOf(b), n:b.length }; }).filter(function(b){return b.wr!==null;});
+  var wrEvolHtml = wrBuckets.length>=2 ? '<div class="card" style="margin-top:10px"><div class="label" style="margin-bottom:8px">Evolución del win rate</div>'
+    + wrBuckets.map(function(b){ return '<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0"><span>Tramo '+b.i+' ('+b.n+' op.)</span><span style="font-weight:700">'+b.wr.toFixed(0)+'%</span></div>'; }).join('')
+    + '</div>' : '';
+
+  var cumplBuckets = evolSplitBuckets(actualOps.filter(function(o){return o.reglasEval;}), 4).map(function(b,i){ return { i:i+1, c: cumplimientoOf(b), n:b.length }; }).filter(function(b){return b.c!==null;});
+  var cumplEvolHtml = cumplBuckets.length>=2 ? '<div class="card" style="margin-top:10px"><div class="label" style="margin-bottom:8px">Evolución del cumplimiento de reglas</div>'
+    + cumplBuckets.map(function(b){ return '<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0"><span>Tramo '+b.i+' ('+b.n+' op.)</span><span style="font-weight:700">'+b.c.toFixed(0)+'%</span></div>'; }).join('')
+    + '</div>' : '';
+
+  var proContraHtml = ['Pro-tendencia','Contra-tendencia'].map(function(tipo){
+    var ops = actualOps.filter(function(o){return o.tipoOperacion===tipo;});
+    if (!ops.length) return null;
+    var wr = winRateOf(ops), cu = cumplimientoOf(ops.filter(function(o){return o.reglasEval;}));
+    return '<div style="flex:1;min-width:130px"><div style="font-weight:700;font-size:12.5px;margin-bottom:4px">'+esc(tipo)+'</div>'
+      + '<div style="font-size:11.5px;color:var(--textDim)">'+ops.length+' op. · Win rate '+(wr!==null?wr.toFixed(0)+'%':'—')+'</div>'
+      + '<div style="font-size:11.5px;color:var(--textDim)">Cumplimiento '+(cu!==null?cu.toFixed(0)+'%':'sin datos')+'</div></div>';
+  }).filter(function(x){return x;});
+
+  function agruparPor(ops, resolver){
+    var map = {};
+    ops.forEach(function(o){ var k = resolver(o); if (!k) return; (map[k]=map[k]||[]).push(o); });
+    return Object.keys(map).map(function(k){
+      var g = map[k]; var profit = g.reduce(function(s,o){return s+(parseFloat(o.beneficio)||0);},0);
+      return { key:k, count:g.length, profit:profit, winRate:winRateOf(g) };
+    }).sort(function(a,b){return b.profit-a.profit;});
+  }
+  var evolActivos = agruparPor(actualOps, function(o){ return (o.activo==='Otro activo'?o.activoManual:o.activo)||''; });
+  var evolSesiones = agruparPor(actualOps, function(o){ return o.sesion ? (o.sesion==='Otra'?(o.sesionManual||'Otra'):o.sesion) : ''; });
+  function evolMejorPeorHtml(titulo, lista){
+    if (lista.length < 1) return '';
+    var mejor = lista[0], peor = lista[lista.length-1];
+    return '<div class="card" style="margin-top:10px"><div class="label" style="margin-bottom:8px">'+titulo+'</div>'
+      + '<div style="font-size:12px">🥇 Mejor: <b>'+esc(mejor.key)+'</b> ('+fmtNum(mejor.profit)+', '+mejor.count+' op.)</div>'
+      + (lista.length>1 && peor.key!==mejor.key ? '<div style="font-size:12px;margin-top:4px">🔴 Peor: <b>'+esc(peor.key)+'</b> ('+fmtNum(peor.profit)+', '+peor.count+' op.)</div>' : '')
+      + '</div>';
+  }
+  var evolActivosHtml = evolMejorPeorHtml('Evolución por activo (en este período)', evolActivos);
+  var evolSesionesHtml = evolMejorPeorHtml('Evolución por sesión (en este período)', evolSesiones);
+
+  return '<div style="padding:22px 18px 0"><h3 style="font-size:15px;font-weight:700;margin-bottom:12px">📈 Evolución del trader</h3>'
+  + '<div style="display:flex;gap:8px;padding:0 0 14px;overflow-x:auto">'+periodChips+'</div>'
+  + '<div class="card">'
+  +   '<div class="label" style="margin-bottom:10px">Tu progreso como trader</div>'
+  +   barraHtml
+  +   (progreso!==null && progresoAnterior!==null ? '<div style="font-size:11.5px;color:'+(progreso>=progresoAnterior?'var(--green)':'var(--red)')+';margin-top:6px">'+(progreso>=progresoAnterior?'📈 +':'📉 ')+(progreso-progresoAnterior).toFixed(0)+' puntos frente al período anterior</div>' : '')
+  +   desgloseHtml
+  + '</div>'
+  + '<div style="text-align:center;padding:16px 10px 0;font-size:13px;font-style:italic;color:var(--gold)">"No compitas con otros traders. Compite contra tu versión de ayer."</div>'
+  + wrEvolHtml + cumplEvolHtml
+  + (proContraHtml.length ? '<div class="card" style="margin-top:10px"><div class="label" style="margin-bottom:10px">Pro-tendencia vs. Contra-tendencia</div><div style="display:flex;gap:14px;flex-wrap:wrap">'+proContraHtml.join('')+'</div></div>' : '')
+  + evolActivosHtml + evolSesionesHtml
+  + '</div>';
+}
+function bindEvolucionTraderEvents(){
+  document.querySelectorAll('.evol-period-chip').forEach(function(c){
+    c.addEventListener('click', function(){ state.evolPeriodo = c.getAttribute('data-periodo'); render(); });
+  });
 }
 
 /* ================= SMC study helpers ================= */
@@ -1990,11 +2155,13 @@ function renderEstadisticas(){
   if (total===0) {
     return '<div class="topbar"><button class="iconbtn" id="back-btn">'+icon('back')+'</button><h2 style="font-size:17px;font-weight:700">Estadísticas</h2></div>'
     + '<div style="display:flex;gap:8px;padding:16px 18px 0;overflow-x:auto">'+chips+'</div>'
+    + renderEvolucionTrader(scoped)
     + '<div style="padding:18px"><div class="empty">Sin datos todavía. Registra operaciones en el Diario.</div></div>';
   }
 
   return '<div class="topbar"><button class="iconbtn" id="back-btn">'+icon('back')+'</button><h2 style="font-size:17px;font-weight:700">Estadísticas</h2></div>'
   + '<div style="display:flex;gap:8px;padding:16px 18px 0;overflow-x:auto">'+chips+'</div>'
+  + renderEvolucionTrader(scoped)
   + '<div style="padding:16px 18px 0"><div class="stat-grid">'
   +   '<div class="card"><div class="label">Win Rate</div><div style="font-size:20px;font-weight:700;margin-top:4px;color:var(--green)">'+winRate.toFixed(0)+'%</div></div>'
   +   '<div class="card"><div class="label">RR Promedio</div><div style="font-size:20px;font-weight:700;margin-top:4px;color:var(--gold)">'+rrProm.toFixed(2)+'R</div></div>'
@@ -2116,6 +2283,7 @@ function opHighlight(ic,label,op,positive){
 function bindEstadisticasEvents(){
   var back = document.getElementById('back-btn'); if (back) back.addEventListener('click', function(){ goTo('home'); });
   document.querySelectorAll('.stats-chip').forEach(function(c){ c.addEventListener('click', function(){ state.statsScope = c.getAttribute('data-cuenta'); render(); }); });
+  bindEvolucionTraderEvents();
 }
 
 /* ================= IMPUESTOS ================= */
