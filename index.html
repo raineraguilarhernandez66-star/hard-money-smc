@@ -357,6 +357,34 @@ function loadChecklistTemplate(){
 function saveChecklistTemplate(t){ lsSet('hm_checklist_template', t); }
 
 var RULE_CATEGORIES = ['General','Pro-tendencia','Contra-tendencia','Riesgo','Gestión','Stop Loss','Take Profit','Rangos','Psicología'];
+
+/* ================= ACADEMIA (estructura de cursos/módulos, preparada para crecer) ================= */
+var ACADEMIA_CURSOS = [
+  {
+    id: 'smc', icono: '📚', titulo: 'Smart Money Concept',
+    modulos: [
+      { id: 'm1', titulo: 'Módulo 1 — Fundamentos', desarrollado: true },
+      { id: 'm2', titulo: 'Módulo 2 — Rango de trabajo en HTF', desarrollado: false },
+      { id: 'm3', titulo: 'Módulo 3 — Identificar Swing High y Swing Low', desarrollado: false },
+      { id: 'm4', titulo: 'Módulo 4 — Rangos de trabajo en LTF', desarrollado: false },
+      { id: 'm5', titulo: 'Módulo 5 — Algoritmo Interbancario (IPDA)', desarrollado: false },
+      { id: 'm6', titulo: 'Módulo 6 — Clase de Order Block e Imbalance', desarrollado: false },
+      { id: 'm7', titulo: 'Módulo 7 — Clase de Decisional y Extremo', desarrollado: false },
+      { id: 'm8', titulo: 'Módulo 8 — Clase de Liquidez Avanzada', desarrollado: false },
+      { id: 'm9', titulo: 'Módulo 9 — Tipo de Entradas', desarrollado: false },
+      { id: 'm10', titulo: 'Módulo 10 — Clase de Order Flow', desarrollado: false },
+      { id: 'm11', titulo: 'Módulo 11 — Clase de Cobertura', desarrollado: false },
+      { id: 'm12', titulo: 'Módulo 12 — Clase de Gestión de Riesgo', desarrollado: false },
+      { id: 'm13', titulo: 'Módulo 13 — Clase de Psicología de Mercado', desarrollado: false },
+      { id: 'm14', titulo: 'Módulo 14 — Backtesting de la estrategia', desarrollado: false }
+    ]
+  }
+];
+function academiaFindCurso(id){ return ACADEMIA_CURSOS.find(function(c){ return c.id===id; }); }
+function academiaFindModulo(cursoId, moduloId){
+  var curso = academiaFindCurso(cursoId);
+  return curso ? curso.modulos.find(function(m){ return m.id===moduloId; }) : null;
+}
 function defaultRules(){
   function r(texto, categoria, noNegociable){
     return { id: uid('rule'), texto: texto, categoria: categoria, noNegociable: !!noNegociable, activa: true, createdAt: Date.now() };
@@ -460,6 +488,7 @@ var state = {
   filterCuenta: 'Todas',
   statsScope: 'Todas',
   evolPeriodo: 'todo',
+  academiaCursoId: null, academiaModuloId: null,
   calScope: 'Todas',
   calCursor: (function(){ var d = new Date(); d.setDate(1); return d; })(),
   movements: [], goal: null, goalHistory: [],
@@ -794,6 +823,9 @@ function render(){
   else if (state.view === 'reglas') html = renderReglas();
   else if (state.view === 'checklists-entrada') html = renderChecklistsEntrada();
   else if (state.view === 'activos-personalizados') html = renderActivosPersonalizados();
+  else if (state.view === 'academia') html = renderAcademia();
+  else if (state.view === 'academia-curso') html = renderAcademiaCurso();
+  else if (state.view === 'academia-modulo') html = renderAcademiaModulo();
 
   var deep = (state.view === 'diario-form' || state.view === 'biblioteca-study');
   app.style.paddingBottom = deep ? '10px' : '96px';
@@ -813,6 +845,9 @@ function render(){
   else if (state.view === 'reglas') bindReglasEvents();
   else if (state.view === 'checklists-entrada') bindChecklistsEntradaEvents();
   else if (state.view === 'activos-personalizados') bindActivosPersonalizadosEvents();
+  else if (state.view === 'academia') bindAcademiaEvents();
+  else if (state.view === 'academia-curso') bindAcademiaCursoEvents();
+  else if (state.view === 'academia-modulo') bindAcademiaModuloEvents();
 }
 
 function goTo(view){ state.view = view; render(); }
@@ -1018,6 +1053,18 @@ function renderHome(){
   +     iconTile('landmark','Cuentas','ar-cuentas')
   +     iconTile('listcheck','Mis reglas','ar-reglas')
   +   '</div>'
+  + '</div>'
+  + '<div style="padding:18px 18px 0">'
+  +   '<button id="ar-academia-card" style="all:unset;box-sizing:border-box;display:block;width:100%;cursor:pointer">'
+  +     '<div class="card" style="display:flex;align-items:center;gap:14px">'
+  +       '<span class="icontile-circle" style="font-size:20px">🎓</span>'
+  +       '<div style="flex:1">'
+  +         '<div style="font-weight:700;font-size:14.5px;color:var(--text)">Academia</div>'
+  +         '<div style="font-size:11.5px;color:var(--textDim);margin-top:2px">Aprende • Practica • Mejora</div>'
+  +       '</div>'
+  +       '<span class="pill pill-gold" style="white-space:nowrap">Entrar a Academia</span>'
+  +     '</div>'
+  +   '</button>'
   + '</div>';
 }
 function iconTile(ic,label,id){
@@ -1075,7 +1122,7 @@ function bindHomeEvents(){
   var hist = document.getElementById('mv-history-btn'); if (hist) hist.addEventListener('click', openMovementsHistoryModal);
   var cuentasTile = document.getElementById('ar-cuentas');
   if (cuentasTile) cuentasTile.addEventListener('click', openAccountSwitcherModal);
-  var m = { 'ar-calendario':'calendario','ar-stats':'estadisticas','ar-biblioteca':'biblioteca-list','ar-impuestos':'impuestos','ar-diario':'diario-list','ar-reglas':'reglas' };
+  var m = { 'ar-calendario':'calendario','ar-stats':'estadisticas','ar-biblioteca':'biblioteca-list','ar-impuestos':'impuestos','ar-diario':'diario-list','ar-reglas':'reglas','ar-academia-card':'academia' };
   Object.keys(m).forEach(function(id){
     var el = document.getElementById(id);
     if (el) el.addEventListener('click', function(){ goTo(m[id]); });
@@ -1149,6 +1196,7 @@ function renderMas(){
   +   masRow('listcheck','Mis reglas','Tus reglas de trading, editables','mas-reglas')
   +   masRow('listcheck','Checklists de entrada','Confirmación y Riesgo, editables','mas-checklists-entrada')
   +   masRow('layers','Activos personalizados','Agregar tus propios activos','mas-activos')
+  +   masRow('trophy','Academia','Cursos y módulos para aprender SMC','mas-academia')
   +   masRow('settings2','Configuración','Copia de seguridad: exportar / restaurar','mas-config')
   + '</div>';
 }
@@ -1166,6 +1214,7 @@ function bindMasEvents(){
   var rg = document.getElementById('mas-reglas'); if (rg) rg.addEventListener('click', function(){ goTo('reglas'); });
   var ce = document.getElementById('mas-checklists-entrada'); if (ce) ce.addEventListener('click', function(){ goTo('checklists-entrada'); });
   var ac = document.getElementById('mas-activos'); if (ac) ac.addEventListener('click', function(){ goTo('activos-personalizados'); });
+  var ad = document.getElementById('mas-academia'); if (ad) ad.addEventListener('click', function(){ state.academiaCursoId=null; state.academiaModuloId=null; goTo('academia'); });
   var cfg = document.getElementById('mas-config'); if (cfg) cfg.addEventListener('click', function(){ goTo('config'); });
 }
 
@@ -1335,6 +1384,129 @@ function openAssetModal(asset){
     saveCustomAssets(assets);
     closeModal(); render();
   });
+}
+
+/* ================= ACADEMIA ================= */
+function renderAcademia(){
+  var cursosHtml = ACADEMIA_CURSOS.map(function(c){
+    var completados = c.modulos.filter(function(m){return m.desarrollado;}).length;
+    return '<button class="op-row academia-curso-row" data-id="'+c.id+'" style="text-align:left;width:100%;cursor:pointer">'
+      + '<div style="display:flex;align-items:center;gap:12px">'
+      +   '<span class="icontile-circle" style="color:var(--gold)">'+c.icono+'</span>'
+      +   '<div style="flex:1"><div style="font-weight:700;font-size:14.5px">'+esc(c.titulo)+'</div>'
+      +   '<div style="font-size:11.5px;color:var(--textDim);margin-top:2px">'+completados+' de '+c.modulos.length+' módulos disponibles</div></div>'
+      + '</div>'
+      + '</button>';
+  }).join('');
+  return '<div class="topbar"><button class="iconbtn" id="back-btn">'+icon('back')+'</button><h2 style="font-size:17px;font-weight:700">🎓 Academia</h2></div>'
+  + '<div style="padding:18px 18px 0"><div class="card" style="background:var(--cardAlt);text-align:center">'
+  +   '<div style="font-size:13px;font-style:italic;line-height:1.6;color:var(--text)">"Los resultados no llegan de un día para otro. Dale prioridad al estudio, aprende, practica y construye tu progreso paso a paso."</div>'
+  + '</div></div>'
+  + '<div style="padding:18px 18px 0;display:flex;flex-direction:column;gap:10px">'+cursosHtml+'</div>';
+}
+function bindAcademiaEvents(){
+  var back = document.getElementById('back-btn'); if (back) back.addEventListener('click', function(){ goTo('mas'); });
+  document.querySelectorAll('.academia-curso-row').forEach(function(row){
+    row.addEventListener('click', function(){ state.academiaCursoId = row.getAttribute('data-id'); goTo('academia-curso'); });
+  });
+}
+function renderAcademiaCurso(){
+  var curso = academiaFindCurso(state.academiaCursoId);
+  if (!curso) return '<div class="empty">Curso no encontrado.</div>';
+  var modulosHtml = curso.modulos.map(function(m, idx){
+    if (m.desarrollado) {
+      return '<button class="op-row academia-modulo-row" data-id="'+m.id+'" style="text-align:left;width:100%;cursor:pointer">'
+        + '<div style="display:flex;align-items:center;justify-content:space-between">'
+        +   '<span style="font-weight:600;font-size:13.5px">📖 '+esc(m.titulo)+'</span>'
+        +   '<span class="pill pill-green">Disponible</span>'
+        + '</div></button>';
+    }
+    return '<div class="op-row" style="opacity:0.55">'
+      + '<div style="display:flex;align-items:center;justify-content:space-between">'
+      +   '<span style="font-weight:600;font-size:13.5px">'+esc(m.titulo)+'</span>'
+      +   '<span class="pill pill-default">🔒 Próximamente</span>'
+      + '</div></div>';
+  }).join('');
+  return '<div class="topbar"><button class="iconbtn" id="back-btn">'+icon('back')+'</button><h2 style="font-size:17px;font-weight:700">'+curso.icono+' '+esc(curso.titulo)+'</h2></div>'
+  + '<div style="padding:16px 18px 0"><p style="color:var(--textDim);font-size:12.5px;margin:0 0 4px">Los módulos se irán habilitando progresivamente.</p></div>'
+  + '<div style="padding:16px 18px 0;display:flex;flex-direction:column;gap:10px">'+modulosHtml+'</div>';
+}
+function bindAcademiaCursoEvents(){
+  var back = document.getElementById('back-btn'); if (back) back.addEventListener('click', function(){ goTo('academia'); });
+  document.querySelectorAll('.academia-modulo-row').forEach(function(row){
+    row.addEventListener('click', function(){ state.academiaModuloId = row.getAttribute('data-id'); goTo('academia-modulo'); });
+  });
+}
+var ACADEMIA_SIGLAS = [
+  ['SMC','Smart Money Concept','Metodología de análisis basada en estructura, liquidez y movimiento del precio.'],
+  ['HTF','Higher Time Frame','Temporalidad mayor, usada para definir el contexto general.'],
+  ['LTF','Lower Time Frame','Temporalidad menor, usada para afinar la entrada.'],
+  ['TF','Time Frame','Temporalidad o marco de tiempo del gráfico.'],
+  ['BOS','Break of Structure','Ruptura de una estructura previa del precio.'],
+  ['CHOCH','Change of Character','Cambio de carácter: primera señal de posible cambio de tendencia.'],
+  ['HH','Higher High','Máximo más alto que el anterior.'],
+  ['HL','Higher Low','Mínimo más alto que el anterior.'],
+  ['LH','Lower High','Máximo más bajo que el anterior.'],
+  ['LL','Lower Low','Mínimo más bajo que el anterior.'],
+  ['POI','Point of Interest','Zona del gráfico que consideramos importante para buscar una posible reacción del precio.'],
+  ['OB','Order Block','Última vela contraria antes de un movimiento fuerte, usada como zona de interés.'],
+  ['FVG','Fair Value Gap','Desequilibrio o vacío de precio entre velas.'],
+  ['SL','Stop Loss','Nivel donde se cierra la operación para limitar la pérdida.'],
+  ['TP','Take Profit','Nivel donde se cierra la operación para tomar la ganancia.'],
+  ['BE','Break Even','Cerrar la operación sin ganancia ni pérdida.'],
+  ['R:R','Risk/Reward','Relación entre lo que se arriesga y lo que se espera ganar.'],
+  ['IPDA','Interbank Price Delivery Algorithm','Algoritmo interbancario que describe cómo se distribuye el precio en el tiempo.']
+];
+var ACADEMIA_CONCEPTOS = [
+  ['Liquidez','Zonas donde pueden existir órdenes o stops que pueden ser buscados por el precio.'],
+  ['Inducción','Movimiento que atrae a los traders hacia una dirección antes de revertir.'],
+  ['Swing High','Punto donde el precio marca un máximo antes de girar a la baja.'],
+  ['Swing Low','Punto donde el precio marca un mínimo antes de girar al alza.'],
+  ['Premium','Zona superior de un rango, considerada cara para comprar.'],
+  ['Discount','Zona inferior de un rango, considerada barata para vender.'],
+  ['Imbalance','Desequilibrio entre compradores y vendedores que el precio tiende a corregir.'],
+  ['Decisional','Zona donde el precio tomó una decisión clara de dirección.'],
+  ['Extremo','El punto más alejado de una zona de interés, con mayor probabilidad de reacción.'],
+  ['Order Flow','Flujo de órdenes que revela la intención de compradores y vendedores.'],
+  ['Rango de trabajo','Zona delimitada entre dos puntos donde se concentra el análisis.']
+];
+function renderAcademiaModulo(){
+  var curso = academiaFindCurso(state.academiaCursoId);
+  var modulo = curso ? academiaFindModulo(curso.id, state.academiaModuloId) : null;
+  if (!curso || !modulo) return '<div class="empty">Módulo no encontrado.</div>';
+  var contenidoHtml;
+  if (modulo.id === 'm1') {
+    contenidoHtml = ''
+      + '<div class="card">'
+      +   '<div class="label" style="margin-bottom:8px">¿Qué es Smart Money Concept?</div>'
+      +   '<div style="font-size:13px;line-height:1.6">Smart Money Concept (SMC) es una metodología de análisis del mercado que busca interpretar principalmente la estructura, la liquidez y el movimiento del precio.</div>'
+      + '</div>'
+      + '<div class="card" style="margin-top:14px">'
+      +   '<div class="label" style="margin-bottom:10px">Siglas y conceptos</div>'
+      +   ACADEMIA_SIGLAS.map(function(s){
+            return '<div style="padding:8px 0;border-bottom:1px solid var(--border)">'
+              + '<div style="display:flex;align-items:baseline;gap:8px"><span style="font-weight:700;color:var(--gold);font-size:12.5px">'+esc(s[0])+'</span><span style="font-size:11.5px;color:var(--textDim)">'+esc(s[1])+'</span></div>'
+              + '<div style="font-size:12px;margin-top:3px;line-height:1.5">'+esc(s[2])+'</div>'
+              + '</div>';
+          }).join('')
+      + '</div>'
+      + '<div class="card" style="margin-top:14px">'
+      +   '<div class="label" style="margin-bottom:10px">Conceptos sin sigla</div>'
+      +   ACADEMIA_CONCEPTOS.map(function(c){
+            return '<div style="padding:8px 0;border-bottom:1px solid var(--border)">'
+              + '<div style="font-weight:700;font-size:12.5px">'+esc(c[0])+'</div>'
+              + '<div style="font-size:12px;margin-top:3px;line-height:1.5;color:var(--textDim)">'+esc(c[1])+'</div>'
+              + '</div>';
+          }).join('')
+      + '</div>';
+  } else {
+    contenidoHtml = '<div class="card" style="text-align:center;padding:30px 18px"><div style="color:var(--textDim)">🔒</div><div style="margin-top:10px;font-size:13px;color:var(--textDim)">Este módulo todavía no está desarrollado.</div></div>';
+  }
+  return '<div class="topbar"><button class="iconbtn" id="back-btn">'+icon('back')+'</button><h2 style="font-size:15.5px;font-weight:700">'+esc(modulo.titulo)+'</h2></div>'
+  + '<div style="padding:18px 18px 40px">'+contenidoHtml+'</div>';
+}
+function bindAcademiaModuloEvents(){
+  var back = document.getElementById('back-btn'); if (back) back.addEventListener('click', function(){ goTo('academia-curso'); });
 }
 
 /* ================= CHECKLISTS DE ENTRADA (Confirmación y Riesgo) — editables ================= */
